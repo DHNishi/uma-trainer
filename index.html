@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        .stat-card, .card-slot {
+            transition: all 0.2s ease-in-out;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .log-entry {
+            border-left: 3px solid transparent;
+            padding-left: 0.75rem;
+        }
+        .log-entry-train { border-color: #3b82f6; }
+        .log-entry-rest { border-color: #10b981; }
+        .log-entry-recreate { border-color: #f97316; }
+        .log-entry-event { border-color: #a855f7; }
+        .log-entry-system { border-color: #64748b; }
+        .hidden { display: none; }
+        .modal-bg {
+            background-color: rgba(0,0,0,0.5);
+        }
+        .card-select-item:hover {
+            background-color: #f3f4f6;
+        }
+        #card-tooltip {
+            position: absolute;
+            display: none;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 100;
+            pointer-events: none; /* Prevents the tooltip from blocking mouse events */
+            max-width: 250px;
+        }
+        .collapsible-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            overflow: hidden;
+            max-height: 1000px; /* Large enough for content */
+            opacity: 1;
+        }
+        .collapsible-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0 !important;
+        }
+        .collapse-icon {
+            transition: transform 0.3s ease-in-out;
+        }
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+        @keyframes fade-in-out {
+            0% { opacity: 0; transform: translateY(5px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-5px); }
+        }
+        .stat-change {
+            animation: fade-in-out 2.5s ease-in-out forwards;
+            position: absolute;
+            right: 0.75rem;
+            bottom: 0.5rem;
+        }
+        .bond-weight-select {
+            display: none;
+        }
+        .show-weights .bond-weight-select {
+            display: block;
+        }
+        #goal-seek-results-list table tbody tr:hover {
+            background-color: #f9fafb;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-4 bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-gray-900">Training Simulator</h1>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-6 text-center">
+                    <div><div class="text-sm font-medium text-gray-500">Day</div><div id="day-display" class="text-2xl font-bold text-blue-600">1 / 65</div></div>
+                    <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
+                    <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
+                </div>
+                <button id="settings-button" class="text-gray-500 hover:text-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Left Column -->
+            <div class="lg:col-span-1 space-y-4">
+                <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Stats & Bonuses</h2>
+                    <div id="stats-container" class="grid grid-cols-2 gap-3">
+                        <!-- Stats will be populated by JS -->
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-md">
+                    <div id="toggle-support-cards" class="flex justify-between items-center cursor-pointer border-b pb-2 mb-3">
+                        <h2 class="text-xl font-bold text-gray-900">Support Cards</h2>
+                        <div class="flex items-center space-x-2">
+                            <label for="show-weights-toggle" class="text-sm font-medium text-gray-600">Show Weights</label>
+                            <input type="checkbox" id="show-weights-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <svg class="collapse-icon h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                        </div>
+                    </div>
+                    <div id="support-cards-content" class="collapsible-content space-y-2">
+                        <div id="support-card-slots"></div>
+                    </div>
+                </div>
+                 <div class="bg-white p-4 rounded-xl shadow-md">
+                    <div id="toggle-target-stats" class="flex justify-between items-center cursor-pointer border-b pb-2 mb-3">
+                        <h2 class="text-xl font-bold text-gray-900">Target Stats</h2>
+                        <svg class="collapse-icon h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                    <div id="target-stats-content" class="collapsible-content">
+                         <div class="mt-3">
+                            <label for="target-preset-select" class="block text-sm font-medium text-gray-700">Select Preset</label>
+                            <select id="target-preset-select" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-sm">
+                                <option value="sprint">Sprint</option>
+                                <option value="mile">Mile</option>
+                                <option value="medium">Medium</option>
+                                <option value="long">Long</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                         <div id="target-stats-inputs" class="space-y-2 mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Column -->
+            <div class="lg:col-span-1 space-y-4">
+                 <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Training</h2>
+                    <div id="training-actions" class="space-y-2"></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Other Actions</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <button id="action-rest" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition">Rest</button>
+                        <button id="action-recreate" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg transition">Recreation</button>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Controls</h2>
+                    <div class="grid grid-cols-1 gap-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="ai-next-day" class="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-lg transition">Run AI Next Day</button>
+                            <button id="ai-run-all" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg transition">Run All Days</button>
+                        </div>
+                        <button id="reset-sim" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition mt-2">Reset Simulation</button>
+                    </div>
+                </div>
+                 <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Multi-Run Analysis</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="run-count" class="block text-sm font-medium text-gray-700">Number of Simulations</label>
+                            <input type="number" id="run-count" value="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                        </div>
+                        <button id="ai-run-multi" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Run Analysis</button>
+                        <div id="multi-sim-progress-container" class="hidden mt-2">
+                            <div class="text-sm font-medium text-gray-600 mb-1" id="multi-sim-progress-text"></div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5"><div id="multi-sim-progress-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="lg:col-span-1 space-y-4">
+                <div id="results-container" class="bg-white p-4 rounded-xl shadow-md hidden">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Analysis Results</h2>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stat</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Met Target %</th></tr></thead>
+                        <tbody id="results-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-md">
+                    <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Event Log</h2>
+                    <div id="log-display" class="h-[600px] overflow-y-auto pr-2 space-y-3 text-sm"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Tooltip -->
+    <div id="card-tooltip"></div>
+
+    <!-- Card Selection Modal -->
+    <div id="card-select-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Select Support Card</h3>
+            </div>
+            <div class="p-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="card-search-input" class="block text-sm font-medium text-gray-700">Search by Name</label>
+                        <input type="text" id="card-search-input" class="mt-1 block w-full pl-3 pr-2 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md" placeholder="e.g., Kitasan Black">
+                    </div>
+                    <div>
+                        <label for="card-type-filter" class="block text-sm font-medium text-gray-700">Filter by Type</label>
+                        <select id="card-type-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"></select>
+                    </div>
+                </div>
+                <div id="card-list" class="max-h-64 overflow-y-auto border rounded-md"></div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right">
+                <button id="modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Goal Seek Results Modal -->
+    <div id="goal-seek-results-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Goal Seek Results</h3>
+            </div>
+            <div id="goal-seek-results-list" class="p-4 max-h-80 overflow-y-auto">
+                <!-- Results will be populated here -->
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right">
+                <button id="goal-seek-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Settings</h3>
+            </div>
+            <div class="p-4 space-y-6">
+                <div>
+                    <label for="mood-down-chance" class="block text-sm font-medium text-gray-700">Mood Down Chance (%)</label>
+                    <input type="number" id="mood-down-chance" value="2.5" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="delay-for-rainbows-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <label for="delay-for-rainbows-toggle" class="text-sm font-medium text-gray-700">Delay for Rainbows</label>
+                </div>
+                <div id="goal-seek-filter-settings">
+                    <h4 class="text-md font-medium text-gray-800 border-t pt-4">Goal Seek Filter</h4>
+                    <div class="space-y-2 mt-2">
+                        <!-- Checkboxes will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right">
+                <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- CONFIGURATION & CONSTANTS ---
+        const TRAINING_TYPES = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit'];
+        const TRAINING_PRIORITY = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit'];
+        const STAT_MAP = ['speed', 'stamina', 'power', 'guts', 'wit'];
+        const TYPE_MAP = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit', '', 'Friend'];
+        const RARITY_MAP = {1: 'R', 2: 'SR', 3: 'SSR'};
+        const DECK_STORAGE_KEY = 'trainingSimDeck';
+        const TARGETS_STORAGE_KEY = 'trainingSimTargets';
+        const STAT_BONUS_STORAGE_KEY = 'trainingSimStatBonuses';
+        const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
+        const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
+        const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+
+        const TARGET_PRESETS = {
+            sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
+            mile:   { speed: 1200, stamina: 620, power: 1200, guts: 260, wit: 400 },
+            medium: { speed: 1200, stamina: 900, power: 1200, guts: 320, wit: 400 },
+            long:   { speed: 1200, stamina: 1200, power: 1200, guts: 400, wit: 400 }
+        };
+
+        const TRAINING_DATA = {
+            Speed:   { base_cost: 21, levels: [{ speed: 10, power: 5 }, { speed: 11, power: 5 }, { speed: 12, power: 5 }, { speed: 13, power: 6 }, { speed: 14, power: 7 }] },
+            Stamina: { base_cost: 19, levels: [{ stamina: 9, guts: 4 }, { stamina: 10, guts: 4 }, { stamina: 11, guts: 4 }, { stamina: 12, guts: 5 }, { stamina: 13, guts: 6 }] },
+            Power:   { base_cost: 20, levels: [{ power: 8, stamina: 5 }, { power: 9, stamina: 5 }, { power: 10, stamina: 5 }, { power: 11, stamina: 6 }, { power: 12, stamina: 7 }] },
+            Guts:    { base_cost: 22, levels: [{ guts: 8, speed: 4, power: 4 }, { guts: 9, speed: 4, power: 4 }, { guts: 10, speed: 4, power: 4 }, { guts: 11, speed: 5, power: 4 }, { guts: 12, speed: 5, power: 5 }] },
+            Wit:     { base_cost: -5, levels: [{ wit: 9, speed: 2 }, { wit: 10, speed: 2 }, { wit: 11, speed: 2 }, { wit: 12, speed: 3 }, { wit: 13, speed: 4 }] }
+        };
+
+        const MOODS = {
+            '-2': { name: 'Awful', multiplier: -0.20, color: 'text-red-600' },
+            '-1': { name: 'Bad', multiplier: -0.10, color: 'text-orange-500' },
+            '0': { name: 'Normal', multiplier: 0, color: 'text-gray-700' },
+            '1': { name: 'Good', multiplier: 0.10, color: 'text-sky-500' },
+            '2': { name: 'Great', multiplier: 0.20, color: 'text-pink-500' }
+        };
+        
+        const FRIENDSHIP_BOND_THRESHOLD = 80;
+
+        const ALL_CARDS_DATA = [{"id": 30028, "limit_break": 0, "char_name": "Kitasan Black", "type": 0, "rarity": 3, "starting_stats": [5, 0, 5, 0, 0], "stat_bonus": [0, 0, 0, 0, 0, 0], "specialty_rate": 35, "unique_specialty": 1.0, "tb": 1.05, "fs_bonus": 1.1, "mb": 1.1, "wisdom_recovery": 0, "hint_rate": 1.1, "race_bonus": 0},{"id": 30028, "limit_break": 4, "char_name": "Kitasan Black", "type": 0, "rarity": 3, "starting_stats": [15, 0, 15, 0, 0], "stat_bonus": [0, 0, 1, 0, 0, 0], "specialty_rate": 80, "unique_specialty": 1.2, "tb": 1.15, "fs_bonus": 1.25, "mb": 1.3, "wisdom_recovery": 0, "hint_rate": 1.1, "race_bonus": 10},{"id": 30041, "limit_break": 0, "char_name": "Fine Motion", "type": 4, "rarity": 3, "starting_stats": [0, 0, 0, 0, 10], "stat_bonus": [0, 0, 0, 0, 0, 0], "specialty_rate": 40, "unique_specialty": 1.0, "tb": 1.10, "fs_bonus": 1.10, "mb": 1.2, "wisdom_recovery": 2, "hint_rate": 1.0, "race_bonus": 0},{"id": 30041, "limit_break": 4, "char_name": "Fine Motion", "type": 4, "rarity": 3, "starting_stats": [0, 0, 0, 0, 30], "stat_bonus": [1, 0, 0, 0, 0, 0], "specialty_rate": 100, "unique_specialty": 1.0, "tb": 1.20, "fs_bonus": 1.20, "mb": 1.5, "wisdom_recovery": 5, "hint_rate": 1.0, "race_bonus": 5},{"id": 30056, "limit_break": 4, "char_name": "Maruzensky", "type": 0, "rarity": 3, "starting_stats": [30, 0, 0, 0, 0], "stat_bonus": [1, 0, 0, 0, 0, 0], "specialty_rate": 100, "unique_specialty": 1.0, "tb": 1.2, "fs_bonus": 1.3, "mb": 1.0, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 30022, "limit_break": 4, "char_name": "Super Creek", "type": 1, "rarity": 3, "starting_stats": [0, 30, 0, 0, 0], "stat_bonus": [0, 1, 0, 0, 0, 0], "specialty_rate": 65, "unique_specialty": 1.0, "tb": 1.20, "fs_bonus": 1.30, "mb": 1.0, "wisdom_recovery": 2, "hint_rate": 1.0, "race_bonus": 0},{"id": 30004, "limit_break": 4, "char_name": "Oguri Cap", "type": 2, "rarity": 3, "starting_stats": [0, 0, 30, 0, 0], "stat_bonus": [0, 0, 1, 0, 0, 0], "specialty_rate": 80, "unique_specialty": 1.0, "tb": 1.15, "fs_bonus": 1.25, "mb": 1.0, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 30048, "limit_break": 4, "char_name": "El Condor Pasa", "type": 3, "rarity": 3, "starting_stats": [0, 0, 0, 30, 0], "stat_bonus": [0, 0, 0, 1, 0, 0], "specialty_rate": 80, "unique_specialty": 1.0, "tb": 1.15, "fs_bonus": 1.25, "mb": 1.0, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 20001, "limit_break": 4, "char_name": "Sakura Bakushin O", "type": 0, "rarity": 2, "starting_stats": [20, 0, 0, 0, 0], "stat_bonus": [1, 0, 0, 0, 0, 0], "specialty_rate": 60, "unique_specialty": 1.0, "tb": 1.10, "fs_bonus": 1.10, "mb": 1.1, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 20016, "limit_break": 4, "char_name": "Mayano Top Gun", "type": 2, "rarity": 2, "starting_stats": [0, 0, 20, 0, 0], "stat_bonus": [0, 0, 1, 0, 0, 0], "specialty_rate": 50, "unique_specialty": 1.0, "tb": 1.10, "fs_bonus": 1.15, "mb": 1.0, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 10003, "limit_break": 4, "char_name": "Haru Urara", "type": 3, "rarity": 1, "starting_stats": [0, 0, 0, 15, 0], "stat_bonus": [0, 0, 0, 1, 0, 0], "specialty_rate": 35, "unique_specialty": 1.0, "tb": 1.05, "fs_bonus": 1.05, "mb": 1.0, "wisdom_recovery": 0, "hint_rate": 1.0, "race_bonus": 0},{"id": 40001, "limit_break": 4, "char_name": "Tazuna Hayakawa", "type": 6, "rarity": 3, "starting_stats": [5, 5, 5, 5, 5], "stat_bonus": [0, 0, 0, 0, 0, 0], "specialty_rate": 0, "unique_specialty": 1.0, "tb": 1.0, "fs_bonus": 1.0, "mb": 1.0, "wisdom_recovery": 0, "energy_discount": 0.20, "energy_up": 0.3, "stat_boost": { "type": "speed", "amount": 3 }, "hint_rate": 1.0, "race_bonus": 0},{"id": 40002, "limit_break": 4, "char_name": "Aoi Kiryuin", "type": 6, "rarity": 3, "starting_stats": [5, 5, 5, 5, 5], "stat_bonus": [0, 0, 0, 0, 0, 0], "specialty_rate": 0, "unique_specialty": 1.0, "tb": 1.0, "fs_bonus": 1.0, "mb": 1.0, "wisdom_recovery": 0, "energy_discount": 0.20, "energy_up": 0.3, "stat_boost": { "type": "wit", "amount": 3 }, "hint_rate": 1.0, "race_bonus": 0}, {"id": 10022, "type": 6, "group": false, "rarity": 1, "limit_break": 1, "starting_stats": [0, 0, 0, 0, 0], "type_stats": 0, "stat_bonus": [0, 0, 0, 0, 0, 0], "race_bonus": 0, "sb": 21, "specialty_rate": 0, "unique_specialty": 1, "offstat_appearance_denominator": 5, "tb": 1.0, "fs_bonus": 1, "mb": 1, "unique_fs_bonus": 1, "fs_stats": [0, 0, 0, 0, 0, 0], "fs_training": 0, "fs_motivation": 0, "fs_specialty": 1, "fs_ramp": [0, 0], "fs_energy": 0, "wisdom_recovery": 0, "effect_size_up": 1.21, "energy_up": 1.32, "energy_discount": 0.11, "fail_rate_down": 0.16, "hint_rate": 1, "highlander_threshold": 4, "highlander_training": 0, "crowd_bonus": 0, "char_name": "Aoi Kiryuin", "fan_bonus": 0},{"id": 10022, "type": 6, "group": false, "rarity": 1, "limit_break": 2, "starting_stats": [0, 0, 0, 0, 0], "type_stats": 0, "stat_bonus": [0, 0, 0, 0, 0, 0], "race_bonus": 0, "sb": 22, "specialty_rate": 0, "unique_specialty": 1, "offstat_appearance_denominator": 5, "tb": 1.0, "fs_bonus": 1, "mb": 1, "unique_fs_bonus": 1, "fs_stats": [0, 0, 0, 0, 0, 0], "fs_training": 0, "fs_motivation": 0, "fs_specialty": 1, "fs_ramp": [0, 0], "fs_energy": 0, "wisdom_recovery": 0, "effect_size_up": 1.22, "energy_up": 1.35, "energy_discount": 0.12, "fail_rate_down": 0.17, "hint_rate": 1, "highlander_threshold": 4, "highlander_training": 0, "crowd_bonus": 0, "char_name": "Aoi Kiryuin", "fan_bonus": 0},{"id": 10022, "type": 6, "group": false, "rarity": 1, "limit_break": 3, "starting_stats": [0, 0, 0, 0, 0], "type_stats": 0, "stat_bonus": [0, 0, 0, 0, 0, 0], "race_bonus": 0, "sb": 23, "specialty_rate": 0, "unique_specialty": 1, "offstat_appearance_denominator": 5, "tb": 1.0, "fs_bonus": 1, "mb": 1, "unique_fs_bonus": 1, "fs_stats": [0, 0, 0, 0, 0, 0], "fs_training": 0, "fs_motivation": 0, "fs_specialty": 1, "fs_ramp": [0, 0], "fs_energy": 0, "wisdom_recovery": 0, "effect_size_up": 1.23, "energy_up": 1.37, "energy_discount": 0.13, "fail_rate_down": 0.18, "hint_rate": 1, "highlander_threshold": 4, "highlander_training": 0, "crowd_bonus": 0, "char_name": "Aoi Kiryuin", "fan_bonus": 0},{"id": 10022, "type": 6, "group": false, "rarity": 1, "limit_break": 4, "starting_stats": [0, 0, 0, 0, 0], "type_stats": 0, "stat_bonus": [0, 0, 0, 0, 0, 0], "race_bonus": 0, "sb": 25, "specialty_rate": 0, "unique_specialty": 1, "offstat_appearance_denominator": 5, "tb": 1.05, "fs_bonus": 1, "mb": 1, "unique_fs_bonus": 1, "fs_stats": [0, 0, 0, 0, 0, 0], "fs_training": 0, "fs_motivation": 0, "fs_specialty": 1, "fs_ramp": [0, 0], "fs_energy": 0, "wisdom_recovery": 0, "effect_size_up": 1.25, "energy_up": 1.4, "energy_discount": 0.15, "fail_rate_down": 0.2, "hint_rate": 1, "highlander_threshold": 4, "highlander_training": 0, "crowd_bonus": 0, "char_name": "Aoi Kiryuin", "fan_bonus": 0}];
+        const UNIQUE_CARDS_DATA = Array.from(new Map(ALL_CARDS_DATA.map(card => [card.id, card])).values());
+
+        // --- GLOBAL STATE ---
+        let gameState;
+        let isSimulating = false;
+        let selectedCards = new Array(6).fill(null);
+        let activeSlotIndex = -1;
+        let previousStats = null;
+        let goalSeekSlotIndex = -1;
+        let currentSettings = {};
+        let initialStartingStats = {};
+
+        // --- DOM ELEMENTS ---
+        const dayDisplay = document.getElementById('day-display');
+        const energyDisplay = document.getElementById('energy-display');
+        const moodDisplay = document.getElementById('mood-display');
+        const logDisplay = document.getElementById('log-display');
+        const trainingActionsContainer = document.getElementById('training-actions');
+        const supportCardSlotsContainer = document.getElementById('support-card-slots');
+        const targetStatsInputsContainer = document.getElementById('target-stats-inputs');
+        const statsContainer = document.getElementById('stats-container');
+        const aiNextDayButton = document.getElementById('ai-next-day');
+        const aiRunAllButton = document.getElementById('ai-run-all');
+        const resetSimButton = document.getElementById('reset-sim');
+        const restButton = document.getElementById('action-rest');
+        const recreateButton = document.getElementById('action-recreate');
+        const runCountInput = document.getElementById('run-count');
+        const aiRunMultiButton = document.getElementById('ai-run-multi');
+        const resultsContainer = document.getElementById('results-container');
+        const resultsBody = document.getElementById('results-body');
+        const progressContainer = document.getElementById('multi-sim-progress-container');
+        const progressBar = document.getElementById('multi-sim-progress-bar');
+        const progressText = document.getElementById('multi-sim-progress-text');
+        const modal = document.getElementById('card-select-modal');
+        const modalCloseButton = document.getElementById('modal-close-button');
+        const cardTypeFilter = document.getElementById('card-type-filter');
+        const cardSearchInput = document.getElementById('card-search-input');
+        const cardListContainer = document.getElementById('card-list');
+        const cardTooltip = document.getElementById('card-tooltip');
+        const showWeightsToggle = document.getElementById('show-weights-toggle');
+        const supportCardsContent = document.getElementById('support-cards-content');
+        const goalSeekModal = document.getElementById('goal-seek-results-modal');
+        const goalSeekList = document.getElementById('goal-seek-results-list');
+        const goalSeekCloseButton = document.getElementById('goal-seek-modal-close-button');
+        const targetPresetSelect = document.getElementById('target-preset-select');
+        const settingsButton = document.getElementById('settings-button');
+        const settingsModal = document.getElementById('settings-modal');
+        const settingsModalCloseButton = document.getElementById('settings-modal-close-button');
+        const moodDownChanceInput = document.getElementById('mood-down-chance');
+        const delayForRainbowsToggle = document.getElementById('delay-for-rainbows-toggle');
+        const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
+
+        // --- LOCAL STORAGE FUNCTIONS ---
+        function saveDeckToLocalStorage() {
+            localStorage.setItem(DECK_STORAGE_KEY, JSON.stringify(selectedCards));
+        }
+
+        function loadDeckFromLocalStorage() {
+            const savedDeck = localStorage.getItem(DECK_STORAGE_KEY);
+            if (savedDeck) {
+                selectedCards = JSON.parse(savedDeck);
+            }
+        }
+
+        function saveTargetsToLocalStorage() {
+            const targets = getTargetStatsFromUI();
+            localStorage.setItem(TARGETS_STORAGE_KEY, JSON.stringify(targets));
+        }
+
+        function loadTargetsFromLocalStorage() {
+            const savedTargets = localStorage.getItem(TARGETS_STORAGE_KEY);
+            if (savedTargets) {
+                const targets = JSON.parse(savedTargets);
+                STAT_MAP.forEach(stat => {
+                    if (targets.values && targets.values[stat] !== undefined) {
+                        const input = document.getElementById(`target-${stat}`);
+                        if (input) input.value = targets.values[stat];
+                    }
+                    if (targets.priorities && targets.priorities[stat] !== undefined) {
+                        const select = document.getElementById(`priority-${stat}`);
+                        if (select) select.value = targets.priorities[stat];
+                    }
+                });
+                // Check if the loaded values match a preset
+                let matchedPreset = 'custom';
+                for (const presetName in TARGET_PRESETS) {
+                    const preset = TARGET_PRESETS[presetName];
+                    const isMatch = STAT_MAP.every(stat => preset[stat] == (targets.values[stat] || 0));
+                    if (isMatch) {
+                        matchedPreset = presetName;
+                        break;
+                    }
+                }
+                targetPresetSelect.value = matchedPreset;
+
+            } else {
+                // No saved data, apply default
+                applyTargetPreset('medium');
+                targetPresetSelect.value = 'medium';
+            }
+        }
+
+        function saveStatBonusesToLocalStorage() {
+            const bonuses = {};
+            STAT_MAP.forEach(stat => {
+                bonuses[stat] = document.getElementById(`bonus-${stat}`).value;
+            });
+            localStorage.setItem(STAT_BONUS_STORAGE_KEY, JSON.stringify(bonuses));
+        }
+
+        function loadStatBonusesFromLocalStorage() {
+            const savedBonuses = localStorage.getItem(STAT_BONUS_STORAGE_KEY);
+            if (savedBonuses) {
+                const bonuses = JSON.parse(savedBonuses);
+                for (const stat in bonuses) {
+                    const select = document.getElementById(`bonus-${stat}`);
+                    if (select) select.value = bonuses[stat];
+                }
+            }
+        }
+        
+        function saveBondWeightsToLocalStorage() {
+            const weights = getBondWeightsFromUI();
+            localStorage.setItem(BOND_WEIGHTS_STORAGE_KEY, JSON.stringify(weights));
+        }
+
+        function loadBondWeightsFromLocalStorage() {
+            const savedWeights = localStorage.getItem(BOND_WEIGHTS_STORAGE_KEY);
+            if (savedWeights) {
+                const weights = JSON.parse(savedWeights);
+                for (let i = 0; i < 6; i++) {
+                    const select = document.getElementById(`bond-weight-${i}`);
+                    if (select && weights[i] !== undefined) {
+                        select.value = weights[i];
+                    }
+                }
+            }
+        }
+
+        function saveStartingStatsToLocalStorage() {
+            const stats = getStartingStatsFromUI();
+            localStorage.setItem(STARTING_STATS_STORAGE_KEY, JSON.stringify(stats));
+        }
+
+        function loadStartingStatsFromLocalStorage() {
+            const savedStats = localStorage.getItem(STARTING_STATS_STORAGE_KEY);
+            if (savedStats) {
+                const stats = JSON.parse(savedStats);
+                for (const stat in stats) {
+                    const input = document.getElementById(`stat-${stat}`);
+                    if (input) input.value = stats[stat];
+                }
+            }
+        }
+        
+        function saveSettingsToLocalStorage() {
+            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(currentSettings));
+        }
+
+        function loadSettingsFromLocalStorage() {
+            const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+            const defaultSettings = {
+                moodDownChance: 2.5,
+                delayForRainbows: false,
+                goalSeekLBs: {
+                    SSR: [0, 2, 4],
+                    SR: [0, 2, 4],
+                    R: [4]
+                }
+            };
+            currentSettings = savedSettings ? { ...defaultSettings, ...savedSettings } : defaultSettings;
+            
+            // Update UI elements
+            moodDownChanceInput.value = currentSettings.moodDownChance;
+            delayForRainbowsToggle.checked = currentSettings.delayForRainbows;
+            updateGoalSeekFilterUI();
+        }
+
+
+        // --- INITIALIZATION ---
+        function init(isSilent = false) {
+            isSimulating = false;
+            previousStats = null;
+            
+            if (!isSilent) {
+                for (const stat in initialStartingStats) {
+                    const input = document.getElementById(`stat-${stat}`);
+                    if (input) {
+                        input.value = initialStartingStats[stat];
+                    }
+                }
+            }
+
+            let localGameState = {
+                day: 1, energy: 100, mood: 0,
+                stats: getStartingStatsFromUI(),
+                training: { Speed: { level: 1, uses: 0 }, Stamina: { level: 1, uses: 0 }, Power: { level: 1, uses: 0 }, Guts: { level: 1, uses: 0 }, Wit: { level: 1, uses: 0 } },
+                supportCards: [], primaryStat: 'Speed', log: [],
+                characterBonuses: getStatBonusesFromUI(),
+                initialStatsApplied: false,
+                isSilent: isSilent
+            };
+            
+            const currentDeck = getDeckFromUI();
+            localGameState.supportCards = currentDeck.map(cardData => {
+                if (!cardData) return null;
+                const card = { ...cardData };
+                
+                const newCard = {
+                    id: card.id, name: card.char_name, specialty: TYPE_MAP[card.type], type: card.type,
+                    rarity: card.rarity, limit_break: card.limit_break,
+                    specialty_rate: card.specialty_rate, unique_specialty: card.unique_specialty,
+                    tb: card.tb, fs_bonus: card.fs_bonus, mb: card.mb,
+                    stat_bonus: card.stat_bonus, wisdom_recovery: card.wisdom_recovery,
+                    hint_rate: card.hint_rate || 1.0,
+                    race_bonus: card.race_bonus || 0,
+                    starting_stats: card.starting_stats,
+                    friendship: 20, location: null, hasHint: false,
+                    energy_discount: card.energy_discount || 0,
+                    energy_up: card.energy_up || 0,
+                    stat_boost: card.stat_boost || null,
+                    trainedWith: false,
+                    recreationBuffs: card.type === 6 ? 3 : 0,
+                    chainEventsUsed: 0,
+                    maxChainEvents: card.rarity === 3 ? 3 : (card.rarity === 2 ? 2 : 0)
+                };
+                return newCard;
+            }).filter(Boolean);
+
+            if (!isSilent) {
+                gameState = localGameState;
+                logEvent('Simulation ready. Press a run button to start.', 'system');
+                placeSupportCards(gameState);
+                enableAllButtons();
+                updateUI();
+            }
+            return localGameState;
+        }
+
+        function applyInitialCardStats(gs) {
+            if (gs.initialStatsApplied) return;
+            gs.supportCards.forEach(cardData => {
+                if (cardData && cardData.starting_stats) {
+                    cardData.starting_stats.forEach((value, index) => {
+                        gs.stats[STAT_MAP[index]] += value;
+                    });
+                }
+            });
+            gs.initialStatsApplied = true;
+            if (!gs.isSilent) {
+                logEvent('Support card starting stats applied.', 'system');
+            }
+        }
+        
+        function populateTargetStatsUI() {
+            targetStatsInputsContainer.innerHTML = `
+                <div class="grid grid-cols-3 gap-2 items-center text-xs font-bold text-gray-500">
+                    <span>Stat</span><span>Value</span><span>Priority</span>
+                </div>
+            ` + STAT_MAP.map(stat => {
+                let selected_1 = stat === 'power' || stat === 'guts' ? 'selected' : '';
+                let selected_2 = stat === 'speed' || stat === 'stamina' ? 'selected' : '';
+                let selected_05 = stat === 'wit' ? 'selected' : '';
+
+                return `
+                <div class="grid grid-cols-3 gap-2 items-center">
+                    <label for="target-${stat}" class="block text-sm font-medium text-gray-700 capitalize">${stat}</label>
+                    <input type="number" id="target-${stat}" value="1200" class="block w-full rounded-md border-gray-300 shadow-sm p-2 text-sm">
+                    <select id="priority-${stat}" class="block w-full rounded-md border-gray-300 shadow-sm p-2 text-sm">
+                        <option value="0">0</option>
+                        <option value="0.25">0.25</option>
+                        <option value="0.5" ${selected_05}>0.5</option>
+                        <option value="0.75">0.75</option>
+                        <option value="1" ${selected_1}>1</option>
+                        <option value="1.5">1.5</option>
+                        <option value="2" ${selected_2}>2</option>
+                        <option value="3">3</option>
+                    </select>
+                </div>`;
+            }).join('');
+            targetStatsInputsContainer.addEventListener('input', (e) => {
+                // Any manual change sets preset to custom
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+                    targetPresetSelect.value = 'custom';
+                }
+                saveTargetsToLocalStorage();
+            });
+        }
+        
+        function setupStatsUI() {
+            const colors = { speed: 'blue', stamina: 'red', power: 'yellow', guts: 'purple', wit: 'indigo' };
+            statsContainer.innerHTML = STAT_MAP.map(stat => `
+                <div id="stat-card-${stat}" class="stat-card bg-${colors[stat]}-50 p-3 rounded-lg relative">
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="font-semibold text-${colors[stat]}-800 capitalize">${stat}</div>
+                        <label class="text-xs font-medium text-gray-500">Bonus
+                            <select id="bonus-${stat}" class="character-bonus-select text-xs rounded border-gray-300 bg-white shadow-sm" data-stat="${stat}">
+                                <option value="0">0%</option>
+                                <option value="0.1">+10%</option>
+                                <option value="0.2">+20%</option>
+                            </select>
+                        </label>
+                    </div>
+                    <input type="number" id="stat-${stat}" value="100" class="starting-stat-input text-2xl font-bold bg-transparent w-full border-none p-0 text-${colors[stat]}-900 focus:ring-0">
+                </div>
+            `).join('');
+            statsContainer.addEventListener('change', (e) => {
+                if (e.target.classList.contains('character-bonus-select')) {
+                    saveStatBonusesToLocalStorage();
+                    init();
+                }
+            });
+            statsContainer.addEventListener('input', (e) => {
+                if (e.target.classList.contains('starting-stat-input')) {
+                    saveStartingStatsToLocalStorage();
+                    initialStartingStats = getStartingStatsFromUI(); // Update the stored initial state
+                }
+            });
+        }
+
+        function setupCardSelector() {
+            loadDeckFromLocalStorage();
+
+            if (!selectedCards[0]) {
+                const defaultCard = ALL_CARDS_DATA.find(card => 
+                    card.char_name === "Kitasan Black" &&
+                    card.rarity === 3 &&
+                    card.limit_break === 4
+                );
+                if (defaultCard) {
+                    selectedCards[0] = { ...defaultCard };
+                    saveDeckToLocalStorage();
+                }
+            }
+
+            for (let i = 0; i < 6; i++) {
+                const slot = document.createElement('div');
+                slot.id = `card-slot-${i}`;
+                slot.dataset.index = i;
+                supportCardSlotsContainer.appendChild(slot);
+            }
+            renderAllCardSlots();
+            loadBondWeightsFromLocalStorage(); // Load after slots are rendered
+            cardTypeFilter.innerHTML = `<option value="-1">All Types</option>` + TYPE_MAP.map((type, i) => type ? `<option value="${i}">${type}</option>` : '').join('');
+            supportCardSlotsContainer.addEventListener('click', (e) => {
+                const slot = e.target.closest('.card-slot-btn');
+                if (slot) {
+                    activeSlotIndex = parseInt(slot.parentElement.parentElement.dataset.index);
+                    openModal();
+                }
+                const removeBtn = e.target.closest('.remove-card-btn');
+                if(removeBtn) {
+                    hideTooltip();
+                    const index = parseInt(removeBtn.dataset.index);
+                    selectedCards[index] = null;
+                    renderCardSlot(index);
+                    saveDeckToLocalStorage();
+                    init();
+                }
+                const goalSeekBtn = e.target.closest('.goal-seek-btn');
+                if (goalSeekBtn) {
+                    const index = parseInt(goalSeekBtn.dataset.index);
+                    handleGoalSeek(index);
+                }
+            });
+            cardTypeFilter.addEventListener('change', renderCardList);
+            cardSearchInput.addEventListener('input', renderCardList);
+            modalCloseButton.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => { if(e.target === modal) closeModal() });
+            cardListContainer.addEventListener('click', (e) => {
+                const cardItem = e.target.closest('.card-select-item');
+                if (cardItem) {
+                    const cardId = parseInt(cardItem.dataset.id);
+                    const allVersions = ALL_CARDS_DATA.filter(c => c.id === cardId);
+                    const highestLbVersion = allVersions.sort((a, b) => b.limit_break - a.limit_break)[0];
+                    selectedCards[activeSlotIndex] = { ...highestLbVersion };
+                    renderCardSlot(activeSlotIndex);
+                    saveDeckToLocalStorage();
+                    closeModal();
+                    init();
+                }
+            });
+            supportCardSlotsContainer.addEventListener('change', (e) => {
+                if (e.target.classList.contains('limit-break-select')) {
+                    const index = parseInt(e.target.dataset.index);
+                    if (selectedCards[index]) {
+                        const cardId = selectedCards[index].id;
+                        const newLb = parseInt(e.target.value);
+                        const newCardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === newLb);
+                        if (newCardData) {
+                            selectedCards[index] = { ...newCardData };
+                            saveDeckToLocalStorage();
+                            init();
+                        }
+                    }
+                }
+                if (e.target.classList.contains('bond-weight-select')) {
+                    saveBondWeightsToLocalStorage();
+                }
+            });
+            // Tooltip Listeners
+            supportCardSlotsContainer.addEventListener('mouseover', (e) => {
+                const slot = e.target.closest('.card-slot-rendered');
+                if (slot) {
+                    const index = parseInt(slot.closest('[data-index]').dataset.index);
+                    const card = getDeckFromUI()[index];
+                    if (card) {
+                        showTooltip(e, card);
+                    }
+                }
+            });
+            supportCardSlotsContainer.addEventListener('mouseout', (e) => {
+                const slot = e.target.closest('.card-slot-rendered');
+                if (slot) {
+                    hideTooltip();
+                }
+            });
+            supportCardSlotsContainer.addEventListener('mousemove', (e) => {
+                updateTooltipPosition(e);
+            });
+        }
+
+        function renderAllCardSlots() {
+            for (let i = 0; i < 6; i++) { renderCardSlot(i); }
+        }
+
+        function renderCardSlot(index) {
+            const slotContainer = document.getElementById(`card-slot-${index}`);
+            const card = selectedCards[index];
+            if (card) {
+                const availableLBs = ALL_CARDS_DATA.filter(c => c.id === card.id).map(c => c.limit_break).sort((a,b) => b-a);
+                slotContainer.innerHTML = `
+                    <div class="card-slot-rendered p-2 border rounded-lg flex items-center justify-between bg-white">
+                        <div class="flex-grow">
+                            <span class="font-bold">${card.char_name}</span>
+                            <span class="text-xs font-semibold text-gray-500 ml-2">${RARITY_MAP[card.rarity]} - ${TYPE_MAP[card.type]}</span>
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                             <select id="bond-weight-${index}" class="bond-weight-select text-xs rounded-md border-gray-300 shadow-sm">
+                                <option value="0">0%</option><option value="0.25">25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option>
+                             </select>
+                             <select class="limit-break-select text-xs rounded-md border-gray-300 shadow-sm" data-index="${index}">
+                                ${availableLBs.map(lb => `<option value="${lb}" ${lb === card.limit_break ? 'selected' : ''}>LB ${lb}</option>`).join('')}
+                            </select>
+                            <button class="remove-card-btn text-red-500 hover:text-red-700" data-index="${index}">&times;</button>
+                        </div>
+                    </div>`;
+            } else {
+                slotContainer.innerHTML = `<div class="flex gap-2">
+                    <button class="card-slot-btn w-full p-2 border-2 border-dashed rounded-lg text-gray-400 hover:bg-gray-50 hover:border-gray-400">Slot ${index + 1}: Add Card</button>
+                    <button class="goal-seek-btn w-full p-2 border-2 border-dashed rounded-lg text-purple-400 hover:bg-purple-50 hover:border-purple-400" data-index="${index}">Find Best</button>
+                </div>`;
+            }
+        }
+        
+        function openModal() {
+            cardSearchInput.value = ''; // BUG FIX: Clear search on open
+            renderCardList();
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => cardSearchInput.focus(), 50); // FEATURE: Auto-focus search bar
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function renderCardList() {
+            const typeFilter = parseInt(cardTypeFilter.value);
+            const searchQuery = cardSearchInput.value.toLowerCase().trim();
+            const filtered = UNIQUE_CARDS_DATA
+                .filter(c => {
+                    const typeMatch = typeFilter === -1 || c.type === typeFilter;
+                    const nameMatch = searchQuery === '' || c.char_name.toLowerCase().includes(searchQuery);
+                    return typeMatch && nameMatch;
+                })
+                .sort((a,b) => b.rarity - a.rarity || a.char_name.localeCompare(b.char_name));
+            cardListContainer.innerHTML = filtered.map(card => `
+                <div class="card-select-item p-3 border-b cursor-pointer flex justify-between items-center" data-id="${card.id}">
+                    <div><p class="font-semibold">${card.char_name}</p><p class="text-sm text-gray-600">${TYPE_MAP[card.type]}</p></div>
+                    <span class="text-sm font-bold">${RARITY_MAP[card.rarity]}</span>
+                </div>`).join('');
+        }
+
+        function getDeckFromUI() {
+            return selectedCards.map(cardInfo => {
+                if (!cardInfo) return null;
+                const cardData = ALL_CARDS_DATA.find(c => c.id === cardInfo.id && c.limit_break === cardInfo.limit_break);
+                return cardData || ALL_CARDS_DATA.find(c => c.id === cardInfo.id);
+            }).filter(Boolean);
+        }
+
+        function updateUI() {
+            if (!gameState) return;
+            dayDisplay.textContent = `${gameState.day} / 65`;
+            energyDisplay.textContent = gameState.energy;
+            const currentMood = MOODS[gameState.mood];
+            moodDisplay.textContent = currentMood.name;
+            moodDisplay.className = `text-2xl font-bold ${currentMood.color}`;
+            
+            STAT_MAP.forEach(stat => {
+                const statEl = document.getElementById(`stat-${stat}`);
+                if (statEl && document.activeElement !== statEl) {
+                     statEl.value = Math.floor(gameState.stats[stat]);
+                }
+
+                if (previousStats) {
+                    const diff = Math.floor(gameState.stats[stat]) - Math.floor(previousStats[stat]);
+                    if (diff !== 0) {
+                        const statCard = document.getElementById(`stat-card-${stat}`);
+                        const changeEl = document.createElement('span');
+                        changeEl.textContent = `(${diff > 0 ? '+' : ''}${diff})`;
+                        changeEl.className = `stat-change font-bold text-lg ${diff > 0 ? 'text-green-600' : 'text-red-600'}`;
+                        statCard.appendChild(changeEl);
+                        setTimeout(() => changeEl.remove(), 2500);
+                    }
+                }
+            });
+            
+            if (previousStats) previousStats = null;
+
+            updateTrainingActionsUI();
+            recreateButton.disabled = gameState.mood >= 2 || isSimulating;
+            logDisplay.innerHTML = gameState.log.map(entry => `<div class="log-entry log-entry-${entry.type}"><p class="font-semibold text-gray-600">Day ${entry.day}</p><p class="text-gray-800">${entry.message}</p></div>`).join('');
+            logDisplay.scrollTop = logDisplay.scrollHeight;
+            if (gameState.day > 65 && !isSimulating) { gameOver(); }
+        }
+
+        function calculateTrainingCost(type, level) {
+            const data = TRAINING_DATA[type];
+            if (!data || type === 'Wit') return data.base_cost;
+            let cost = data.base_cost + (level - 1);
+            if (level >= 4) cost += 1;
+            if (level >= 5) cost += 1;
+            return cost;
+        }
+
+        function updateTrainingActionsUI() {
+            if (!gameState) return;
+            trainingActionsContainer.innerHTML = TRAINING_TYPES.map(type => {
+                const facility = gameState.training[type];
+                const summer = isSummer(gameState.day);
+                const effectiveLevel = summer ? 5 : facility.level;
+                const cost = calculateTrainingCost(type, effectiveLevel);
+                const presentCards = gameState.supportCards.filter(c => c && c.location === type);
+                const friendCard = presentCards.find(c => c.type === 6);
+
+                let finalCost = cost;
+                let costString = `<span class="font-semibold ${cost >= 0 ? 'text-red-500' : 'text-green-500'}">${cost >= 0 ? `-${cost}` : `+${-cost}`} Energy</span>`;
+
+                if (friendCard && type !== 'Wit') {
+                    finalCost = Math.ceil(cost * (1 - friendCard.energy_discount));
+                    costString = `<span class="font-semibold text-green-600"><span class="text-red-500 line-through mr-2">-${cost}</span>-${finalCost} Energy (Friend!)</span>`;
+                }
+
+                const canAfford = gameState.energy >= (15 + finalCost);
+                const isDisabled = !canAfford || isSimulating;
+                const levelDisplay = summer ? `Lvl 5 (Summer)` : `Lvl ${facility.level}`;
+                const presentCardsString = presentCards.length > 0 ? 'Friends: ' + presentCards.map(c => `${c.name}${c.hasHint ? ' <span class="text-yellow-500 font-bold">(Hint!)</span>' : ''}`).join(', ') : 'No friends present.';
+                
+                return `<button data-type="${type}" class="train-action w-full text-left p-3 rounded-lg border-2 transition ${!isDisabled ? 'hover:border-blue-500 hover:bg-blue-50' : 'opacity-50 cursor-not-allowed'}" ${isDisabled ? 'disabled' : ''}>
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-lg">${type} (${levelDisplay})</span>
+                                ${costString}
+                            </div>
+                            <div class="text-sm text-gray-600 mt-1">${presentCardsString}</div>
+                        </button>`;
+            }).join('');
+            document.querySelectorAll('.train-action').forEach(button => { button.addEventListener('click', () => handleTrain(gameState, button.dataset.type)); });
+        }
+
+        function setButtonsState(enabled) {
+            isSimulating = !enabled;
+            [aiNextDayButton, aiRunAllButton, restButton, recreateButton, aiRunMultiButton].forEach(b => b.disabled = !enabled);
+            updateTrainingActionsUI();
+        }
+        
+        function enableAllButtons() { setButtonsState(true); }
+        function disableAllButtons() { setButtonsState(false); }
+
+        function placeSupportCards(gs) {
+            gs.supportCards.forEach(card => {
+                if(!card) return;
+                card.hasHint = false;
+                const locations = [...TRAINING_TYPES, 'Rest'];
+                const weights = new Map();
+                const baseWeight = 100;
+                const offTrainingWeight = 50;
+                let totalWeight = 0;
+                locations.forEach(loc => {
+                    let weight;
+                    if (loc === 'Rest') { weight = offTrainingWeight; } 
+                    else if (loc === card.specialty) { weight = (baseWeight + card.specialty_rate) * card.unique_specialty; } 
+                    else { weight = baseWeight; }
+                    weights.set(loc, weight);
+                    totalWeight += weight;
+                });
+                let random = Math.random() * totalWeight;
+                for (const [location, weight] of weights.entries()) {
+                    if (random < weight) { card.location = location; break; }
+                    random -= weight;
+                }
+                const hintChance = 0.075 * (card.hint_rate || 1.0);
+                if (Math.random() < hintChance) {
+                    card.hasHint = true;
+                }
+            });
+        }
+
+        function handleTrain(gs, type, isSilent = false) {
+            const facility = gs.training[type];
+            const summer = isSummer(gs.day);
+            const effectiveLevel = summer ? 5 : facility.level;
+            let cost = calculateTrainingCost(type, effectiveLevel);
+            const presentCards = gs.supportCards.filter(c => c && c.location === type);
+            const friendCard = presentCards.find(c => c.type === 6);
+
+            if (friendCard && type !== 'Wit') {
+                cost = Math.ceil(cost * (1 - friendCard.energy_discount));
+            }
+
+            if (gs.energy < (15 + cost)) { if (!isSilent) logEvent(`Not enough energy to train ${type}.`, 'system'); return; }
+            gs.energy -= cost;
+            
+            const gains = calculatePotentialGains(gs, type, presentCards);
+            let gainStrings = [];
+            for (const stat in gains) {
+                gs.stats[stat] += gains[stat];
+                gainStrings.push(`+${Math.floor(gains[stat])} ${stat}`);
+            }
+            if (!isSilent) logEvent(`Trained ${type}. Gains: ${gainStrings.join(', ') || 'None'}.`, 'train');
+
+            if (friendCard) {
+                if (!friendCard.trainedWith) {
+                    friendCard.trainedWith = true;
+                    gs.mood = Math.min(2, gs.mood + 1);
+                    if (!isSilent) logEvent(`First training with ${friendCard.name} improved your mood!`, 'event');
+                } else {
+                    if (Math.random() < 0.40) {
+                        const boost = friendCard.stat_boost || {type: friendCard.name === "Aoi Kiryuin" ? 'wit' : 'speed', amount: 3};
+                        gs.stats[boost.type] += boost.amount;
+                        if (!isSilent) logEvent(`${friendCard.name} provided a stat boost! +${boost.amount} ${boost.type}.`, 'event');
+                    }
+                    if (Math.random() < 0.08) {
+                        gs.mood = Math.min(2, gs.mood + 1);
+                        if (!isSilent) logEvent(`${friendCard.name} cheered you on, improving your mood!`, 'event');
+                    }
+                }
+            }
+            
+            presentCards.forEach(card => {
+                let friendshipGained = 7;
+                if (card.hasHint) {
+                    friendshipGained += 5;
+                    if (!isSilent) logEvent(`Got a hint from ${card.name}! Extra +5 friendship.`, 'event');
+                }
+                card.friendship = Math.min(100, card.friendship + friendshipGained);
+                if (!isSilent) logEvent(`Friendship with ${card.name} increased by ${friendshipGained} to ${card.friendship}.`, 'event');
+
+                if (type === 'Wit' && card.friendship >= FRIENDSHIP_BOND_THRESHOLD && card.wisdom_recovery > 0) {
+                    gs.energy = Math.min(100, gs.energy + card.wisdom_recovery);
+                    if (!isSilent) logEvent(`${card.name} provided wisdom recovery! Gained ${card.wisdom_recovery} energy.`, 'event');
+                }
+            });
+            
+            if (!summer) {
+                facility.uses++;
+                if (facility.uses >= 5 && facility.level < 5) {
+                    facility.uses = 0;
+                    facility.level++;
+                    if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
+                }
+            }
+
+            if (Math.random() < 0.06) {
+                gs.energy = Math.min(100, gs.energy + 5);
+                if (!isSilent) logEvent(`Extra Training event! Gained 5 energy.`, 'event');
+            }
+            advanceDay(gs, isSilent);
+        }
+
+        function handleRest(gs, isSilent = false) {
+            const restingFriend = gs.supportCards.find(c => c && c.location === 'Rest' && c.type === 6);
+            let energyGained = 0, message = '';
+
+            if (restingFriend) {
+                energyGained = Math.ceil(25 * (1 + restingFriend.energy_up));
+                message = `Rested with ${restingFriend.name} and recovered ${energyGained} energy.`;
+            } else {
+                const roll = Math.random();
+                if (roll < 0.25) { energyGained = 70; message = 'Rested well and recovered 70 energy.'; } 
+                else if (roll < 0.875) { energyGained = 50; message = 'Rested and recovered 50 energy.'; } 
+                else { energyGained = 30; message = 'Rest was not very effective. Recovered 30 energy.'; }
+            }
+            gs.energy = Math.min(100, gs.energy + energyGained);
+            if (!isSilent) logEvent(message, 'rest');
+            advanceDay(gs, isSilent);
+        }
+
+        function handleRecreate(gs, isSilent = false) {
+            if (gs.mood >= 2) { if (!isSilent) logEvent('Mood is already Great, cannot use Recreation.', 'system'); return; }
+            
+            const buffingFriend = gs.supportCards.find(c => c && c.type === 6 && c.friendship >= 45 && c.recreationBuffs > 0);
+            if (buffingFriend) {
+                buffingFriend.recreationBuffs--;
+                gs.energy = Math.min(100, gs.energy + 35);
+                gs.mood = Math.min(2, gs.mood + 1);
+                if (!isSilent) logEvent(`${buffingFriend.name}'s support made recreation extra effective! Gained 35 energy & improved mood. (${buffingFriend.recreationBuffs} uses left)`, 'recreate');
+                advanceDay(gs, isSilent);
+                return;
+            }
+
+            const roll = Math.random();
+            let message = '';
+            if (roll < 0.35) { gs.mood = Math.min(2, gs.mood + 2); message = 'Went to Karaoke! Mood greatly improved.'; } 
+            else if (roll < 0.65) { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 10); message = 'Went for a stroll. Mood improved, gained 10 energy.'; } 
+            else if (roll < 0.85) { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 10); message = 'Visited the shrine. Mood improved, gained 10 energy.'; } 
+            else if (roll < 0.95) { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 20); message = 'Visited the shrine, feeling refreshed! Mood improved, gained 20 energy.'; } 
+            else { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 30); message = 'A great blessing at the shrine! Mood improved, gained 30 energy.'; }
+            if (!isSilent) logEvent(message, 'recreate');
+            advanceDay(gs, isSilent);
+        }
+
+        function isSummer(day) {
+            return (day >= 36 && day <= 49) || (day >= 58 && day <= 61);
+        }
+
+        function advanceDay(gs, isSilent = false) {
+            if (!isSilent) {
+                previousStats = { ...gs.stats };
+            }
+            gs.day++;
+            
+            STAT_MAP.forEach(stat => {
+                gs.stats[stat] = Math.min(gs.stats[stat], 1200);
+            });
+
+            if (gs.day === 24) {
+                gs.energy = Math.min(100, gs.energy + 20);
+                if (!isSilent) logEvent('New Year! Gained 20 energy.', 'event');
+            }
+            if (gs.day === 29) {
+                gs.mood = Math.min(2, gs.mood + 1);
+                if (!isSilent) logEvent('URA Scenario Event! Mood improved.', 'event');
+            }
+            if (gs.day === 48) {
+                gs.energy = Math.min(100, gs.energy + 30);
+                if (!isSilent) logEvent('New Year! Gained 30 energy.', 'event');
+            }
+            if (gs.day === 49) {
+                const roll = Math.random();
+                if (roll < 0.10) { // Tissues
+                    gs.mood = Math.max(-2, gs.mood - 1);
+                    if (!isSilent) logEvent('Raffle Prize: Tissues. Mood decreased.', 'event');
+                } else if (roll < 0.57) { // Single Carrot
+                    gs.energy = Math.min(100, gs.energy + 20);
+                    if (!isSilent) logEvent('Raffle Prize: Single Carrot! Gained 20 energy.', 'event');
+                } else if (roll < 0.87) { // Bundle of Carrots
+                    gs.energy = Math.min(100, gs.energy + 20);
+                    gs.mood = Math.min(2, gs.mood + 1);
+                    STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 5, 1200));
+                    if (!isSilent) logEvent('Raffle Prize: Bundle of Carrots! +20 energy, mood up, +5 all stats.', 'event');
+                } else if (roll < 0.97) { // Carrot Curry
+                    gs.energy = Math.min(100, gs.energy + 30);
+                    gs.mood = Math.min(2, gs.mood + 1);
+                    STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 10, 1200));
+                    if (!isSilent) logEvent('Raffle Prize: Carrot Curry! +30 energy, mood up, +10 all stats.', 'event');
+                } else { // Onsen Ticket
+                    gs.energy = Math.min(100, gs.energy + 30);
+                    gs.mood = Math.min(2, gs.mood + 1);
+                    STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 10, 1200));
+                    if (!isSilent) logEvent('Raffle Prize: Onsen Ticket! +30 energy, mood up, +10 all stats, and a special scene later!', 'event');
+                }
+            }
+            
+            if (Math.random() < 0.30) {
+                const eligibleCards = gs.supportCards.filter(c => c && c.chainEventsUsed < c.maxChainEvents);
+                if (eligibleCards.length > 0) {
+                    const card = eligibleCards[Math.floor(Math.random() * eligibleCards.length)];
+                    card.chainEventsUsed++;
+                    card.friendship = Math.min(100, card.friendship + 5);
+                    if (!isSilent) logEvent(`Chain Event with ${card.name}! Friendship increased by 5. (${card.chainEventsUsed}/${card.maxChainEvents})`, 'event');
+                }
+            }
+            
+            if (Math.random() < (currentSettings.moodDownChance / 100)) {
+                if (gs.mood > -2) {
+                    gs.mood--;
+                    if (!isSilent) logEvent('Feeling a bit down... Mood decreased.', 'event');
+                }
+            }
+
+            if (gs.day <= 65) { placeSupportCards(gs); }
+            if (!isSilent) { updateUI(); }
+        }
+
+        function logEvent(message, type = 'system') {
+            if (gameState) {
+                gameState.log.unshift({ day: gameState.day, message, type });
+                if (gameState.log.length > 100) gameState.log.pop();
+            }
+        }
+        
+        function applyEndOfRunBonuses(gs) {
+            const totalRaceBonusPercent = gs.supportCards.reduce((sum, card) => sum + (card ? card.race_bonus : 0), 0) / 100;
+            const smallRacePoints = 9 * Math.floor(3 * (1 + totalRaceBonusPercent));
+            const largeRacePoints = 3 * Math.floor(10 * (1 + totalRaceBonusPercent));
+            const totalRacePoints = smallRacePoints + largeRacePoints;
+            const raceBonusPerStat = Math.floor(totalRacePoints / 5);
+
+            if (raceBonusPerStat > 0) {
+                STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + raceBonusPerStat, 1200));
+                if (!gs.isSilent) logEvent(`Race Bonus! Gained ${raceBonusPerStat} to all stats.`, 'event');
+            }
+
+            STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 15, 1200));
+            if (!gs.isSilent) logEvent(`Director Bonus! Gained 15 to all stats.`, 'event');
+
+            STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 5, 1200));
+            if (!gs.isSilent) logEvent(`Character Ending Bonus! Gained 5 to all stats.`, 'event');
+
+            if (gs.supportCards.some(c => c && c.type === 6)) {
+                let bonusApplied = false;
+                STAT_MAP.forEach(stat => {
+                    const currentStat = gs.stats[stat];
+                    const newStat = Math.min(currentStat + 6, 1200);
+                    if (newStat > currentStat) {
+                        gs.stats[stat] = newStat;
+                        bonusApplied = true;
+                    }
+                });
+                if (bonusApplied && !gs.isSilent) {
+                    logEvent(`Received a final +6 to all stats from Friend Card! (Capped at 1200)`, 'event');
+                }
+            }
+        }
+
+        function gameOver() {
+            applyEndOfRunBonuses(gameState);
+            logEvent('Training complete! Final stats achieved.', 'system');
+            updateUI();
+        }
+        
+        function calculatePotentialGains(gs, type, presentCards) {
+            const facility = gs.training[type];
+            const summer = isSummer(gs.day);
+            const effectiveLevel = summer ? 5 : facility.level;
+            const baseGains = { ...TRAINING_DATA[type].levels[effectiveLevel - 1] };
+            const moodData = MOODS[gs.mood];
+            const totalMoodBonus = presentCards.reduce((prod, card) => prod * card.mb, 1);
+            const moodMultiplier = 1 + (moodData.multiplier * totalMoodBonus);
+            const trainingEffectivenessMultiplier = presentCards.reduce((prod, card) => prod * card.tb, 1);
+            const friendsWithBond = presentCards.filter(c => c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
+            const friendshipMultiplier = friendsWithBond.reduce((prod, card) => prod * card.fs_bonus, 1);
+            let tempGains = { ...baseGains };
+
+            presentCards.forEach(card => {
+                card.stat_bonus.forEach((bonus, index) => {
+                    if (bonus > 0) {
+                        const statName = STAT_MAP[index];
+                        if (baseGains.hasOwnProperty(statName)) {
+                            tempGains[statName] += bonus;
+                        }
+                    }
+                });
+            });
+
+            const finalGains = {};
+            for (const stat in tempGains) {
+                const characterBonusMultiplier = 1 + gs.characterBonuses[stat];
+                finalGains[stat] = tempGains[stat] * moodMultiplier * trainingEffectivenessMultiplier * friendshipMultiplier * characterBonusMultiplier;
+            }
+            return finalGains;
+        }
+
+        function runAITurn(gs, targetStats, bondWeights, delayForRainbows, isSilent = false) {
+            if (gs.day === 1 && !gs.initialStatsApplied) {
+                applyInitialCardStats(gs);
+            }
+            if (gs.day > 65) return;
+            if (gs.mood < 2 && !(gs.energy >= 100 && gs.mood > 0)) { handleRecreate(gs, isSilent); return; }
+            if (gs.energy <= 40) { handleRest(gs, isSilent); return; }
+
+            const availableTrainings = TRAINING_TYPES.map(type => {
+                const facility = gs.training[type];
+                const effectiveLevel = isSummer(gs.day) ? 5 : facility.level;
+                const cost = calculateTrainingCost(type, effectiveLevel);
+                const presentCards = gs.supportCards.filter(c => c && c.location === type);
+                const friendCard = presentCards.find(c => c.type === 6);
+                let finalCost = cost;
+                if (friendCard && type !== 'Wit') {
+                    finalCost = Math.ceil(cost * (1 - friendCard.energy_discount));
+                }
+                const canAfford = gs.energy >= (15 + finalCost);
+                return canAfford ? { type, cost: finalCost } : null; 
+            }).filter(Boolean);
+
+            if (availableTrainings.length === 0) { handleRest(gs, isSilent); return; }
+            
+            if (delayForRainbows) {
+                const allBonded = gs.supportCards.every(c => !c || c.type === 6 || c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
+                if (allBonded) {
+                    const hasRainbow = ['Speed', 'Stamina', 'Power'].some(type => 
+                        gs.supportCards.some(c => c && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD)
+                    );
+                    if (!hasRainbow) {
+                        const witTraining = availableTrainings.find(t => t.type === 'Wit');
+                        if (witTraining) {
+                            handleTrain(gs, 'Wit', isSilent);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            const needsBonding = gs.supportCards.some(c => c && c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD);
+            let bestAction = null;
+
+            if (needsBonding) {
+                const scoredTrainings = availableTrainings.map(t => {
+                    const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                    let bondGain = 0;
+                    presentCards.forEach(card => {
+                        const cardIndex = gs.supportCards.findIndex(sc => sc.id === card.id && sc.limit_break === card.limit_break);
+                        const weight = bondWeights[cardIndex] || 1;
+                        if (card.friendship < FRIENDSHIP_BOND_THRESHOLD && card.type !== 6) {
+                            let currentGain = 7;
+                            if (card.hasHint) {
+                                currentGain += 5;
+                            }
+                            bondGain += currentGain * weight;
+                        }
+                    });
+                    const priority = TRAINING_PRIORITY.indexOf(t.type);
+                    return { ...t, bondGain, priority };
+                });
+                scoredTrainings.sort((a, b) => {
+                    if (a.bondGain !== b.bondGain) return b.bondGain - a.bondGain;
+                    if (a.cost !== b.cost) return a.cost - b.cost;
+                    return a.priority - b.priority;
+                });
+                if (scoredTrainings.length > 0 && scoredTrainings[0].bondGain > 0) { bestAction = scoredTrainings[0].type; }
+            } 
+            if (!bestAction) {
+                const scoredTrainings = availableTrainings.map(t => {
+                    const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                    const potentialGains = calculatePotentialGains(gs, t.type, presentCards);
+                    let score = 0;
+                    for (const stat in potentialGains) {
+                        const currentStatValue = gs.stats[stat];
+                        const targetStatValue = targetStats.values[stat];
+                        const priority = targetStats.priorities[stat];
+                        const gain = potentialGains[stat];
+                        
+                        if (currentStatValue >= 1200) continue;
+                        const usefulGain = Math.min(gain, 1200 - currentStatValue);
+
+                        if (currentStatValue < targetStatValue) {
+                            score += usefulGain * priority;
+                        }
+                    }
+                    return { ...t, score };
+                });
+                scoredTrainings.sort((a, b) => b.score - a.score);
+                if (scoredTrainings.length > 0 && scoredTrainings[0].score > 0) { bestAction = scoredTrainings[0].type; }
+            }
+            if (bestAction) { handleTrain(gs, bestAction, isSilent); } 
+            else { handleRest(gs, isSilent); }
+        }
+
+        function getStartingStatsFromUI() {
+            const stats = {};
+            STAT_MAP.forEach(stat => {
+                stats[stat] = parseInt(document.getElementById(`stat-${stat}`).value) || 100;
+            });
+            return stats;
+        }
+
+        function getTargetStatsFromUI() {
+            const targets = { values: {}, priorities: {} };
+            STAT_MAP.forEach(stat => { 
+                targets.values[stat] = parseInt(document.getElementById(`target-${stat}`).value) || 0;
+                targets.priorities[stat] = parseFloat(document.getElementById(`priority-${stat}`).value) || 1;
+            });
+            return targets;
+        }
+
+        function getBondWeightsFromUI() {
+            const weights = {};
+            for (let i = 0; i < 6; i++) {
+                const select = document.getElementById(`bond-weight-${i}`);
+                if (select) {
+                    weights[i] = parseFloat(select.value);
+                } else {
+                    weights[i] = 1; // Default if not found
+                }
+            }
+            return weights;
+        }
+
+        function getStatBonusesFromUI() {
+            const bonuses = {};
+            STAT_MAP.forEach(stat => {
+                bonuses[stat] = parseFloat(document.getElementById(`bonus-${stat}`).value) || 0;
+            });
+            return bonuses;
+        }
+        
+        function runSingleAITurn() {
+             if (isSimulating) return;
+             if (!gameState.initialStatsApplied) {
+                applyInitialCardStats(gameState);
+                updateUI();
+             }
+             const targets = getTargetStatsFromUI();
+             const bondWeights = getBondWeightsFromUI();
+             runAITurn(gameState, targets, bondWeights, currentSettings.delayForRainbows, false);
+        }
+
+        function runFullSimulation() {
+            if (isSimulating) return;
+            init(); // Reset the state
+            applyInitialCardStats(gameState);
+            updateUI(); // Show stats with card bonuses
+            disableAllButtons();
+            isSimulating = true;
+            const targets = getTargetStatsFromUI();
+            const bondWeights = getBondWeightsFromUI();
+            function simulationStep() {
+                if (gameState.day <= 65 && isSimulating) {
+                    runAITurn(gameState, targets, bondWeights, currentSettings.delayForRainbows, false);
+                    setTimeout(simulationStep, 50);
+                } else {
+                    if (isSimulating) {
+                        gameOver();
+                    }
+                    isSimulating = false;
+                    enableAllButtons();
+                    resetSimButton.disabled = false;
+                }
+            }
+            simulationStep();
+        }
+
+        function runSilentSimulation(targetStats, bondWeights, delayForRainbows) {
+            const localGS = init(true);
+            applyInitialCardStats(localGS);
+            placeSupportCards(localGS);
+            while(localGS.day <= 65) {
+                runAITurn(localGS, targetStats, bondWeights, delayForRainbows, true);
+            }
+            applyEndOfRunBonuses(localGS);
+            localGS.stats.total = STAT_MAP.reduce((sum, stat) => sum + localGS.stats[stat], 0);
+            
+            localGS.stats.metTargets = {};
+            STAT_MAP.forEach(stat => {
+                localGS.stats.metTargets[stat] = localGS.stats[stat] >= targetStats.values[stat];
+            });
+            
+            return localGS.stats;
+        }
+
+        async function handleMultiSim() {
+            if (isSimulating) return;
+            disableAllButtons();
+            isSimulating = true;
+            resultsContainer.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            const numRuns = parseInt(runCountInput.value) || 100;
+            const targetStats = getTargetStatsFromUI();
+            const bondWeights = getBondWeightsFromUI();
+            const allResults = [];
+            for (let i = 0; i < numRuns; i++) {
+                allResults.push(runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows));
+                if (i % 10 === 0 || i === numRuns - 1) {
+                    const progressPercentage = ((i + 1) / numRuns) * 100;
+                    progressBar.style.width = `${progressPercentage}%`;
+                    progressText.textContent = `Simulating... (${i + 1}/${numRuns})`;
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+            displayStatResults(allResults);
+            progressContainer.classList.add('hidden');
+            enableAllButtons();
+            isSimulating = false;
+        }
+
+        function displayStatResults(results) {
+            const analysis = {};
+            const statsToAnalyze = [...STAT_MAP, 'total'];
+            statsToAnalyze.forEach(stat => {
+                const values = results.map(r => r[stat]).sort((a, b) => a - b);
+                const sum = values.reduce((acc, v) => acc + v, 0);
+                const mid = Math.floor(values.length / 2);
+                const median = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+                analysis[stat] = { min: Math.floor(values[0]), max: Math.floor(values[values.length - 1]), mean: Math.floor(sum / values.length), median: Math.floor(median) };
+            });
+            
+            let tableHTML = STAT_MAP.map(stat => {
+                const metTargetRuns = results.filter(r => r.metTargets[stat]).length;
+                const metTargetPercentage = (metTargetRuns / results.length) * 100;
+                return `<tr>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">${stat}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].min}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].mean}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].max}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800 font-bold">${metTargetPercentage.toFixed(2)}%</td>
+                </tr>`;
+            }).join('');
+            
+            const totalStat = analysis['total'];
+             tableHTML += `<tr class="bg-gray-50">
+                <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-gray-900">Total</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.min}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.mean}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.max}</td>
+                <td class="px-4 py-2"></td>
+            </tr>`;
+
+            resultsBody.innerHTML = tableHTML;
+            resultsContainer.classList.remove('hidden');
+        }
+
+        // --- Goal Seek Functions ---
+        async function handleGoalSeek(slotIndex) {
+            if (isSimulating) return;
+            goalSeekSlotIndex = slotIndex;
+            disableAllButtons();
+            isSimulating = true;
+            progressContainer.classList.remove('hidden');
+
+            const existingCardNames = selectedCards.filter(Boolean).map(c => c.char_name);
+            const cardPool = ALL_CARDS_DATA.filter(c => {
+                const rarityStr = RARITY_MAP[c.rarity];
+                const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
+                return allowedLBs.includes(c.limit_break) && !existingCardNames.includes(c.char_name);
+            });
+
+            const goalSeekResults = [];
+            const totalCards = cardPool.length;
+
+            for (let i = 0; i < totalCards; i++) {
+                const card = cardPool[i];
+                progressText.textContent = `Testing ${i + 1}/${totalCards}: ${card.char_name} (LB${card.limit_break})`;
+                progressBar.style.width = `${((i + 1) / totalCards) * 100}%`;
+
+                selectedCards[slotIndex] = { ...card };
+                
+                const meanWeightedTotal = await runGoalSeekAnalysis(100);
+                goalSeekResults.push({ card: card, meanWeightedTotal });
+
+                await new Promise(resolve => setTimeout(resolve, 0)); // Allow UI to update
+            }
+
+            selectedCards[slotIndex] = null; // Clear the slot
+            goalSeekResults.sort((a, b) => b.meanWeightedTotal - a.meanWeightedTotal);
+            displayGoalSeekResults(goalSeekResults);
+
+            progressContainer.classList.add('hidden');
+            isSimulating = false;
+            enableAllButtons();
+            init(); // Re-initialize to reflect the cleared slot
+        }
+
+        async function runGoalSeekAnalysis(numRuns) {
+            const targetStats = getTargetStatsFromUI();
+            const bondWeights = getBondWeightsFromUI();
+            let totalWeightedSum = 0;
+            for (let i = 0; i < numRuns; i++) {
+                const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows);
+                const weightedTotal = STAT_MAP.reduce((sum, stat) => {
+                    const statValue = result[stat];
+                    const targetValue = targetStats.values[stat];
+                    const priority = targetStats.priorities[stat];
+                    return sum + Math.min(statValue, targetValue) * priority;
+                }, 0);
+                totalWeightedSum += weightedTotal;
+            }
+            return totalWeightedSum / numRuns;
+        }
+
+        function displayGoalSeekResults(results) {
+            let tableHTML = `<table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Card</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean Weighted Total</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">`;
+
+            results.forEach((res, index) => {
+                const card = res.card;
+                const name = `${card.char_name} ${RARITY_MAP[card.rarity]} ${TYPE_MAP[card.type]} (LB${card.limit_break})`;
+                tableHTML += `<tr class="goal-seek-result-row" data-card-id="${card.id}" data-card-lb="${card.limit_break}">
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${index + 1}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${name}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-blue-600">${Math.floor(res.meanWeightedTotal)}</td>
+                </tr>`;
+            });
+
+            tableHTML += `</tbody></table>`;
+            goalSeekList.innerHTML = tableHTML;
+            goalSeekModal.classList.remove('hidden');
+            goalSeekModal.classList.add('flex');
+        }
+
+
+        // --- Tooltip Functions ---
+        function showTooltip(e, card) {
+            const statBonusString = STAT_MAP
+                .map((stat, index) => card.stat_bonus[index] > 0 ? `<p class="text-gray-700">${stat.charAt(0).toUpperCase() + stat.slice(1)} Bonus: +${card.stat_bonus[index]}</p>` : '')
+                .filter(Boolean)
+                .join('');
+            
+            const friendSpecifics = card.type === 6 ? `
+                <p class="text-gray-700">Energy Discount: ${Math.round((card.energy_discount || 0) * 100)}%</p>
+                <p class="text-gray-700">Rest Energy Up: ${Math.round((card.energy_up || 0) * 100)}%</p>
+            ` : '';
+
+            const content = `
+                <h4 class="font-bold text-md text-gray-900">${card.char_name} <span class="font-medium text-gray-500">(LB ${card.limit_break})</span></h4>
+                <p class="text-sm text-gray-500 mb-2">${RARITY_MAP[card.rarity]} - ${TYPE_MAP[card.type]}</p>
+                <div class="text-sm space-y-1 border-t pt-2 mt-2">
+                    <p class="text-gray-700">Specialty Rate: ${card.specialty_rate}</p>
+                    <p class="text-gray-700">Hint Rate: ${Math.round((card.hint_rate || 1.0) * 100)}%</p>
+                    <p class="text-gray-700">Training Bonus: ${Math.round((card.tb - 1) * 100)}%</p>
+                    <p class="text-gray-700">Friendship Bonus: ${Math.round((card.fs_bonus - 1) * 100)}%</p>
+                    <p class="text-gray-700">Mood Bonus: ${Math.round((card.mb - 1) * 100)}%</p>
+                    <p class="text-gray-700">Wisdom Recovery: +${card.wisdom_recovery}</p>
+                    <p class="text-gray-700">Race Bonus: ${Math.round((card.race_bonus || 0))}%</p>
+                    ${statBonusString}
+                    ${friendSpecifics}
+                </div>
+            `;
+            cardTooltip.innerHTML = content;
+            cardTooltip.style.display = 'block';
+            updateTooltipPosition(e);
+        }
+
+        function hideTooltip() {
+            cardTooltip.style.display = 'none';
+        }
+
+        function updateTooltipPosition(e) {
+            cardTooltip.style.left = (e.pageX + 15) + 'px';
+            cardTooltip.style.top = (e.pageY + 15) + 'px';
+        }
+
+        function setupCollapsibles() {
+            document.getElementById('toggle-support-cards').addEventListener('click', (e) => {
+                if (e.target.id === 'show-weights-toggle') return;
+                document.getElementById('support-cards-content').classList.toggle('collapsed');
+                document.querySelector('#toggle-support-cards .collapse-icon').classList.toggle('collapsed');
+            });
+            document.getElementById('toggle-target-stats').addEventListener('click', () => {
+                document.getElementById('target-stats-content').classList.toggle('collapsed');
+                document.querySelector('#toggle-target-stats .collapse-icon').classList.toggle('collapsed');
+            });
+            showWeightsToggle.addEventListener('change', (e) => {
+                supportCardsContent.classList.toggle('show-weights', e.target.checked);
+            });
+        }
+        
+        function applyTargetPreset(presetName) {
+            const preset = TARGET_PRESETS[presetName];
+            if (!preset) return;
+
+            for (const stat in preset) {
+                const input = document.getElementById(`target-${stat}`);
+                if (input) {
+                    input.value = preset[stat];
+                }
+            }
+            saveTargetsToLocalStorage(); // Save after applying
+        }
+        
+        function updateGoalSeekFilterUI() {
+            const container = goalSeekFilterSettings.querySelector('.space-y-2');
+            container.innerHTML = ''; // Clear previous content
+
+            ['SSR', 'SR', 'R'].forEach(rarity => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center space-x-4';
+                
+                const label = document.createElement('label');
+                label.className = 'text-sm font-medium text-gray-700 w-12';
+                label.textContent = rarity;
+                div.appendChild(label);
+
+                [0, 2, 4].forEach(lb => {
+                    const checkboxId = `gs-${rarity}-${lb}`;
+                    const checkboxWrapper = document.createElement('div');
+                    checkboxWrapper.className = 'flex items-center';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = checkboxId;
+                    checkbox.dataset.rarity = rarity;
+                    checkbox.dataset.lb = lb;
+                    checkbox.className = 'h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500';
+                    checkbox.checked = currentSettings.goalSeekLBs[rarity]?.includes(lb);
+                    
+                    const lbLabel = document.createElement('label');
+                    lbLabel.htmlFor = checkboxId;
+                    lbLabel.textContent = `LB${lb}`;
+                    lbLabel.className = 'ml-2 text-sm text-gray-600';
+
+                    checkboxWrapper.appendChild(checkbox);
+                    checkboxWrapper.appendChild(lbLabel);
+                    div.appendChild(checkboxWrapper);
+                });
+                container.appendChild(div);
+            });
+
+            container.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const rarity = e.target.dataset.rarity;
+                    const lb = parseInt(e.target.dataset.lb);
+                    
+                    if (!currentSettings.goalSeekLBs[rarity]) {
+                        currentSettings.goalSeekLBs[rarity] = [];
+                    }
+
+                    if (e.target.checked) {
+                        if (!currentSettings.goalSeekLBs[rarity].includes(lb)) {
+                            currentSettings.goalSeekLBs[rarity].push(lb);
+                            currentSettings.goalSeekLBs[rarity].sort((a, b) => a - b);
+                        }
+                    } else {
+                        currentSettings.goalSeekLBs[rarity] = currentSettings.goalSeekLBs[rarity].filter(val => val !== lb);
+                    }
+                    saveSettingsToLocalStorage();
+                }
+            });
+        }
+
+        // --- EVENT LISTENERS ---
+        restButton.addEventListener('click', () => handleRest(gameState));
+        recreateButton.addEventListener('click', () => handleRecreate(gameState));
+        resetSimButton.addEventListener('click', () => init(false));
+        aiNextDayButton.addEventListener('click', runSingleAITurn);
+        aiRunAllButton.addEventListener('click', runFullSimulation);
+        aiRunMultiButton.addEventListener('click', handleMultiSim);
+        goalSeekCloseButton.addEventListener('click', () => {
+            goalSeekModal.classList.add('hidden');
+            goalSeekModal.classList.remove('flex');
+        });
+        goalSeekList.addEventListener('click', (e) => {
+            const row = e.target.closest('.goal-seek-result-row');
+            if (!row) return;
+
+            const cardId = parseInt(row.dataset.cardId);
+            const cardLb = parseInt(row.dataset.cardLb);
+
+            const cardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === cardLb);
+            if (cardData) {
+                selectedCards[goalSeekSlotIndex] = { ...cardData };
+                renderCardSlot(goalSeekSlotIndex);
+                saveDeckToLocalStorage();
+                goalSeekModal.classList.add('hidden');
+                goalSeekModal.classList.remove('flex');
+                init();
+            }
+        });
+        targetPresetSelect.addEventListener('change', (e) => {
+            if (e.target.value !== 'custom') {
+                applyTargetPreset(e.target.value);
+            }
+        });
+        settingsButton.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+            settingsModal.classList.add('flex');
+        });
+        settingsModalCloseButton.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+            settingsModal.classList.remove('flex');
+        });
+        moodDownChanceInput.addEventListener('input', (e) => {
+            currentSettings.moodDownChance = parseFloat(e.target.value) || 0;
+            saveSettingsToLocalStorage();
+        });
+        delayForRainbowsToggle.addEventListener('change', (e) => {
+            currentSettings.delayForRainbows = e.target.checked;
+            saveSettingsToLocalStorage();
+        });
+
+        // --- START SIMULATION ---
+        setupStatsUI();
+        populateTargetStatsUI();
+        setupCardSelector();
+        setupCollapsibles();
+        loadStartingStatsFromLocalStorage();
+        initialStartingStats = getStartingStatsFromUI(); // Store initial state after loading
+        loadTargetsFromLocalStorage();
+        loadStatBonusesFromLocalStorage();
+        loadSettingsFromLocalStorage();
+        init();
+    });
+    </script>
+</body>
+</html>
