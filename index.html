@@ -99,6 +99,11 @@
                     <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
                     <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
                 </div>
+                <button id="ai-rules-button" class="text-gray-500 hover:text-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
+                    </svg>
+                </button>
                 <button id="settings-button" class="text-gray-500 hover:text-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -276,11 +281,28 @@
                 </div>
             </div>
             <div class="px-4 py-3 bg-gray-50 text-right">
-                <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+        <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+        </div>
+    </div>
+    </div>
+
+    <!-- AI Rules Modal -->
+    <div id="ai-rules-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">AI Behavior Rules</h3>
+            </div>
+            <div class="p-4 max-h-[70vh] overflow-y-auto">
+                <div id="ai-rules-container" class="space-y-4"></div>
+                <button id="add-ai-rule" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Add Rule</button>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right">
+                <button id="ai-rules-save-button" class="inline-flex justify-center rounded-md border border-transparent bg-green-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-green-700 mr-2">Save</button>
+                <button id="ai-rules-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
             </div>
         </div>
     </div>
-
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -297,6 +319,7 @@
         const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
         const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
         const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+        const AI_RULES_STORAGE_KEY = 'trainingSimAIRules';
 
         const TARGET_PRESETS = {
             sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
@@ -330,6 +353,7 @@
         let gameState;
         let isSimulating = false;
         let selectedCards = new Array(6).fill(null);
+        let customAIRules = [];
         let activeSlotIndex = -1;
         let previousStats = null;
         let goalSeekSlotIndex = -1;
@@ -375,6 +399,12 @@
         const moodDownChanceInput = document.getElementById('mood-down-chance');
         const delayForRainbowsToggle = document.getElementById('delay-for-rainbows-toggle');
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
+        const aiRulesButton = document.getElementById('ai-rules-button');
+        const aiRulesModal = document.getElementById('ai-rules-modal');
+        const aiRulesCloseButton = document.getElementById('ai-rules-close-button');
+        const aiRulesSaveButton = document.getElementById('ai-rules-save-button');
+        const aiRulesContainer = document.getElementById('ai-rules-container');
+        const addAIRuleButton = document.getElementById('add-ai-rule');
 
         // --- LOCAL STORAGE FUNCTIONS ---
         function saveDeckToLocalStorage() {
@@ -495,11 +525,22 @@
                 }
             };
             currentSettings = savedSettings ? { ...defaultSettings, ...savedSettings } : defaultSettings;
-            
+
             // Update UI elements
             moodDownChanceInput.value = currentSettings.moodDownChance;
             delayForRainbowsToggle.checked = currentSettings.delayForRainbows;
             updateGoalSeekFilterUI();
+        }
+
+        function saveAIRulesToLocalStorage() {
+            localStorage.setItem(AI_RULES_STORAGE_KEY, JSON.stringify(customAIRules));
+        }
+
+        function loadAIRulesFromLocalStorage() {
+            const saved = localStorage.getItem(AI_RULES_STORAGE_KEY);
+            if (saved) {
+                customAIRules = JSON.parse(saved);
+            }
         }
 
 
@@ -1200,6 +1241,51 @@
             return finalGains;
         }
 
+        function evaluateCustomRules(trainingType, gs, presentCards) {
+            if (!customAIRules || customAIRules.length === 0) return 0;
+            const context = {
+                trainingType,
+                hintAvailable: presentCards.some(c => c.hasHint),
+                canBond: presentCards.some(c => c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD),
+                supportNames: presentCards.map(c => c.name),
+                rainbowCount: presentCards.filter(c => c.friendship >= FRIENDSHIP_BOND_THRESHOLD).length,
+                nonFriendCount: presentCards.filter(c => c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD).length
+            };
+            let total = 0;
+            customAIRules.forEach(rule => {
+                const results = (rule.conditions || []).map(cond => {
+                    let res = false;
+                    switch (cond.type) {
+                        case 'training_type':
+                            res = !cond.value || context.trainingType === cond.value;
+                            break;
+                        case 'hint_available':
+                            res = context.hintAvailable === (cond.value === 'true');
+                            break;
+                        case 'can_bond':
+                            res = context.canBond === (cond.value === 'true');
+                            break;
+                        case 'specific_support':
+                            res = context.supportNames.includes(cond.value);
+                            break;
+                        case 'min_rainbows':
+                            res = context.rainbowCount >= parseInt(cond.value || '0', 10);
+                            break;
+                        case 'min_nonfriends':
+                            res = context.nonFriendCount >= parseInt(cond.value || '0', 10);
+                            break;
+                    }
+                    if (cond.not) res = !res;
+                    return res;
+                });
+                const satisfied = rule.match === 'any' ? results.some(Boolean) : results.every(Boolean);
+                if (satisfied) {
+                    total += parseFloat(rule.points) || 0;
+                }
+            });
+            return total;
+        }
+
         function runAITurn(gs, targetStats, bondWeights, delayForRainbows, isSilent = false) {
             if (gs.day === 1 && !gs.initialStatsApplied) {
                 applyInitialCardStats(gs);
@@ -1259,6 +1345,7 @@
                         }
                     });
                     const priority = TRAINING_PRIORITY.indexOf(t.type);
+                    bondGain += evaluateCustomRules(t.type, gs, presentCards);
                     return { ...t, bondGain, priority };
                 });
                 scoredTrainings.sort((a, b) => {
@@ -1278,7 +1365,7 @@
                         const targetStatValue = targetStats.values[stat];
                         const priority = targetStats.priorities[stat];
                         const gain = potentialGains[stat];
-                        
+
                         if (currentStatValue >= 1200) continue;
                         const usefulGain = Math.min(gain, 1200 - currentStatValue);
 
@@ -1286,6 +1373,7 @@
                             score += usefulGain * priority;
                         }
                     }
+                    score += evaluateCustomRules(t.type, gs, presentCards);
                     return { ...t, score };
                 });
                 scoredTrainings.sort((a, b) => b.score - a.score);
@@ -1663,6 +1751,105 @@
             });
         }
 
+        function renderAIRules() {
+            aiRulesContainer.innerHTML = '';
+            if (!customAIRules || customAIRules.length === 0) {
+                aiRulesContainer.appendChild(createRuleElement({}));
+                return;
+            }
+            customAIRules.forEach(rule => {
+                aiRulesContainer.appendChild(createRuleElement(rule));
+            });
+        }
+
+        function createRuleElement(rule = {}) {
+            const ruleDiv = document.createElement('div');
+            ruleDiv.className = 'ai-rule border p-3 rounded space-y-2';
+            ruleDiv.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm">Points</label>
+                    <input type="number" class="rule-points w-20 border rounded p-1" value="${rule.points || 0}">
+                    <select class="rule-match border rounded p-1">
+                        <option value="all"${rule.match === 'any' ? '' : ' selected'}>All conditions (AND)</option>
+                        <option value="any"${rule.match === 'any' ? ' selected' : ''}>Any condition (OR)</option>
+                    </select>
+                    <button class="remove-rule text-red-500 ml-auto">Remove</button>
+                </div>
+                <div class="conditions space-y-2"></div>
+                <button class="add-condition bg-gray-200 text-sm px-2 py-1 rounded">Add Condition</button>
+            `;
+            const conditionsContainer = ruleDiv.querySelector('.conditions');
+            (rule.conditions || []).forEach(cond => {
+                conditionsContainer.appendChild(createConditionElement(cond));
+            });
+            return ruleDiv;
+        }
+
+        function createConditionElement(cond = {}) {
+            const div = document.createElement('div');
+            div.className = 'condition-row flex items-center space-x-2';
+            div.innerHTML = `
+                <select class="condition-type border rounded p-1">
+                    <option value="training_type"${cond.type === 'training_type' ? ' selected' : ''}>Training Type</option>
+                    <option value="hint_available"${cond.type === 'hint_available' ? ' selected' : ''}>Hint Available</option>
+                    <option value="can_bond"${cond.type === 'can_bond' ? ' selected' : ''}>Can Bond</option>
+                    <option value="specific_support"${cond.type === 'specific_support' ? ' selected' : ''}>Specific Support</option>
+                    <option value="min_rainbows"${cond.type === 'min_rainbows' ? ' selected' : ''}>Friendships ≥</option>
+                    <option value="min_nonfriends"${cond.type === 'min_nonfriends' ? ' selected' : ''}>Non-Friends ≥</option>
+                </select>
+                <span class="condition-input"></span>
+                <label class="text-sm">Not <input type="checkbox" class="condition-not ml-1"${cond.not ? ' checked' : ''}></label>
+                <button class="remove-condition text-red-500">X</button>
+            `;
+            const typeSelect = div.querySelector('.condition-type');
+            const inputSpan = div.querySelector('.condition-input');
+            function renderInput(type, value) {
+                switch (type) {
+                    case 'training_type': {
+                        const sel = document.createElement('select');
+                        sel.className = 'condition-value border rounded p-1';
+                        sel.innerHTML = '<option value=""></option>' + TRAINING_TYPES.map(t => `<option value="${t}"${value === t ? ' selected' : ''}>${t}</option>`).join('');
+                        inputSpan.innerHTML = '';
+                        inputSpan.appendChild(sel);
+                        break;
+                    }
+                    case 'hint_available':
+                    case 'can_bond': {
+                        const sel = document.createElement('select');
+                        sel.className = 'condition-value border rounded p-1';
+                        sel.innerHTML = `<option value="true"${value === 'true' ? ' selected' : ''}>Yes</option><option value="false"${value === 'false' ? ' selected' : ''}>No</option>`;
+                        inputSpan.innerHTML = '';
+                        inputSpan.appendChild(sel);
+                        break;
+                    }
+                    case 'specific_support': {
+                        const sel = document.createElement('select');
+                        sel.className = 'condition-value border rounded p-1';
+                        const deckNames = gameState.supportCards ? gameState.supportCards.map(c => c ? c.name : '').filter(Boolean) : [];
+                        sel.innerHTML = '<option value=""></option>' + deckNames.map(n => `<option value="${n}"${value === n ? ' selected' : ''}>${n}</option>`).join('');
+                        inputSpan.innerHTML = '';
+                        inputSpan.appendChild(sel);
+                        break;
+                    }
+                    case 'min_rainbows':
+                    case 'min_nonfriends': {
+                        const inp = document.createElement('input');
+                        inp.type = 'number';
+                        inp.className = 'condition-value border rounded p-1 w-20';
+                        inp.value = value || 0;
+                        inputSpan.innerHTML = '';
+                        inputSpan.appendChild(inp);
+                        break;
+                    }
+                    default:
+                        inputSpan.innerHTML = '';
+                }
+            }
+            typeSelect.addEventListener('change', (e) => renderInput(e.target.value, ''));
+            renderInput(cond.type || 'training_type', cond.value);
+            return div;
+        }
+
         // --- EVENT LISTENERS ---
         restButton.addEventListener('click', () => handleRest(gameState));
         recreateButton.addEventListener('click', () => handleRecreate(gameState));
@@ -1712,6 +1899,44 @@
             currentSettings.delayForRainbows = e.target.checked;
             saveSettingsToLocalStorage();
         });
+        aiRulesButton.addEventListener('click', () => {
+            renderAIRules();
+            aiRulesModal.classList.remove('hidden');
+            aiRulesModal.classList.add('flex');
+        });
+        aiRulesCloseButton.addEventListener('click', () => {
+            aiRulesModal.classList.add('hidden');
+            aiRulesModal.classList.remove('flex');
+        });
+        aiRulesSaveButton.addEventListener('click', () => {
+            customAIRules = [...aiRulesContainer.querySelectorAll('.ai-rule')].map(ruleDiv => {
+                const points = parseFloat(ruleDiv.querySelector('.rule-points').value) || 0;
+                const match = ruleDiv.querySelector('.rule-match').value;
+                const conditions = [...ruleDiv.querySelectorAll('.condition-row')].map(condDiv => {
+                    const type = condDiv.querySelector('.condition-type').value;
+                    const valueEl = condDiv.querySelector('.condition-value');
+                    const value = valueEl ? valueEl.value : '';
+                    const not = condDiv.querySelector('.condition-not').checked;
+                    return { type, value, not };
+                });
+                return { points, match, conditions };
+            });
+            saveAIRulesToLocalStorage();
+            aiRulesModal.classList.add('hidden');
+            aiRulesModal.classList.remove('flex');
+        });
+        addAIRuleButton.addEventListener('click', () => {
+            aiRulesContainer.appendChild(createRuleElement({}));
+        });
+        aiRulesContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-condition')) {
+                e.target.closest('.condition-row').remove();
+            } else if (e.target.classList.contains('remove-rule')) {
+                e.target.closest('.ai-rule').remove();
+            } else if (e.target.classList.contains('add-condition')) {
+                e.target.closest('.ai-rule').querySelector('.conditions').appendChild(createConditionElement({}));
+            }
+        });
 
         // --- START SIMULATION ---
         setupStatsUI();
@@ -1723,6 +1948,7 @@
         loadTargetsFromLocalStorage();
         loadStatBonusesFromLocalStorage();
         loadSettingsFromLocalStorage();
+        loadAIRulesFromLocalStorage();
         init();
     });
     </script>
