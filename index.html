@@ -172,6 +172,7 @@
                             <button id="ai-run-all" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg transition">Run All Days</button>
                         </div>
                         <button id="reset-sim" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition mt-2">Reset Simulation</button>
+                        <button id="ai-rules-button" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg transition mt-2">Edit AI Rules</button>
                     </div>
                 </div>
                  <div class="bg-white p-4 rounded-xl shadow-md">
@@ -275,8 +276,26 @@
                     </div>
                 </div>
             </div>
-            <div class="px-4 py-3 bg-gray-50 text-right">
-                <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+        <div class="px-4 py-3 bg-gray-50 text-right">
+            <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+        </div>
+    </div>
+</div>
+
+    <!-- AI Rules Modal -->
+    <div id="ai-rules-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Custom AI Rules</h3>
+            </div>
+            <div class="p-4 space-y-4">
+                <p class="text-sm text-gray-600">Provide rules as JSON array. Each rule needs <code>actions</code>, <code>condition</code>, and <code>points</code>.</p>
+                <textarea id="ai-rules-input" class="w-full border rounded-md p-2 h-40 font-mono text-sm"></textarea>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right space-x-2">
+                <button id="ai-rules-save" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Save</button>
+                <button id="ai-rules-close" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
             </div>
         </div>
     </div>
@@ -297,6 +316,7 @@
         const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
         const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
         const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+        const AI_RULES_STORAGE_KEY = 'trainingSimAIRules';
 
         const TARGET_PRESETS = {
             sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
@@ -335,6 +355,7 @@
         let goalSeekSlotIndex = -1;
         let currentSettings = {};
         let initialStartingStats = {};
+        let aiRules = [];
 
         // --- DOM ELEMENTS ---
         const dayDisplay = document.getElementById('day-display');
@@ -375,6 +396,11 @@
         const moodDownChanceInput = document.getElementById('mood-down-chance');
         const delayForRainbowsToggle = document.getElementById('delay-for-rainbows-toggle');
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
+        const aiRulesButton = document.getElementById('ai-rules-button');
+        const aiRulesModal = document.getElementById('ai-rules-modal');
+        const aiRulesInput = document.getElementById('ai-rules-input');
+        const aiRulesSaveButton = document.getElementById('ai-rules-save');
+        const aiRulesCloseButton = document.getElementById('ai-rules-close');
 
         // --- LOCAL STORAGE FUNCTIONS ---
         function saveDeckToLocalStorage() {
@@ -502,7 +528,19 @@
             updateGoalSeekFilterUI();
         }
 
+        function saveAIRulesToLocalStorage(rules) {
+            localStorage.setItem(AI_RULES_STORAGE_KEY, JSON.stringify(rules));
+        }
 
+        function loadAIRulesFromLocalStorage() {
+            const saved = localStorage.getItem(AI_RULES_STORAGE_KEY);
+            if (saved) {
+                try { return JSON.parse(saved); } catch (e) { return []; }
+            }
+            return [];
+        }
+
+        
         // --- INITIALIZATION ---
         function init(isSilent = false) {
             isSimulating = false;
@@ -1200,6 +1238,39 @@
             return finalGains;
         }
 
+        function getActionContext(gs, type) {
+            if (type === 'Rest') {
+                return { action: 'Rest', trainingType: null, canBond: false, hintAvailable: false,
+                         rainbowCount: 0, nonFriendCount: 0, supportNames: [], hasSupport: () => false };
+            }
+            const presentCards = gs.supportCards.filter(c => c && c.location === type);
+            return {
+                action: type,
+                trainingType: type,
+                canBond: presentCards.some(c => c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD),
+                hintAvailable: presentCards.some(c => c.hasHint),
+                rainbowCount: presentCards.filter(c => c.friendship >= FRIENDSHIP_BOND_THRESHOLD).length,
+                nonFriendCount: presentCards.filter(c => c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD).length,
+                supportNames: presentCards.map(c => c.name),
+                hasSupport: name => presentCards.some(c => c.name === name)
+            };
+        }
+
+        function evaluateCustomRulesForAction(rules, context, action) {
+            return rules.reduce((total, rule) => {
+                const applies = !rule.actions || rule.actions.includes(action) || rule.actions.includes('*');
+                if (applies) {
+                    try {
+                        const fn = new Function('ctx', `with(ctx) { return ${rule.condition}; }`);
+                        if (fn(context)) {
+                            return total + (rule.points || 0);
+                        }
+                    } catch (e) { /* ignore invalid rule */ }
+                }
+                return total;
+            }, 0);
+        }
+
         function runAITurn(gs, targetStats, bondWeights, delayForRainbows, isSilent = false) {
             if (gs.day === 1 && !gs.initialStatsApplied) {
                 applyInitialCardStats(gs);
@@ -1241,10 +1312,10 @@
             }
             
             const needsBonding = gs.supportCards.some(c => c && c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD);
-            let bestAction = null;
+            let scoredTrainings = [];
 
             if (needsBonding) {
-                const scoredTrainings = availableTrainings.map(t => {
+                scoredTrainings = availableTrainings.map(t => {
                     const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
                     let bondGain = 0;
                     presentCards.forEach(card => {
@@ -1259,17 +1330,14 @@
                         }
                     });
                     const priority = TRAINING_PRIORITY.indexOf(t.type);
-                    return { ...t, bondGain, priority };
+                    return { type: t.type, score: bondGain, priority };
                 });
-                scoredTrainings.sort((a, b) => {
-                    if (a.bondGain !== b.bondGain) return b.bondGain - a.bondGain;
-                    if (a.cost !== b.cost) return a.cost - b.cost;
-                    return a.priority - b.priority;
-                });
-                if (scoredTrainings.length > 0 && scoredTrainings[0].bondGain > 0) { bestAction = scoredTrainings[0].type; }
-            } 
-            if (!bestAction) {
-                const scoredTrainings = availableTrainings.map(t => {
+                const maxBond = Math.max(0, ...scoredTrainings.map(t => t.score));
+                if (maxBond <= 0) { scoredTrainings = []; }
+            }
+
+            if (scoredTrainings.length === 0) {
+                scoredTrainings = availableTrainings.map(t => {
                     const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
                     const potentialGains = calculatePotentialGains(gs, t.type, presentCards);
                     let score = 0;
@@ -1278,7 +1346,7 @@
                         const targetStatValue = targetStats.values[stat];
                         const priority = targetStats.priorities[stat];
                         const gain = potentialGains[stat];
-                        
+
                         if (currentStatValue >= 1200) continue;
                         const usefulGain = Math.min(gain, 1200 - currentStatValue);
 
@@ -1286,12 +1354,27 @@
                             score += usefulGain * priority;
                         }
                     }
-                    return { ...t, score };
+                    const priority = TRAINING_PRIORITY.indexOf(t.type);
+                    return { type: t.type, score, priority };
                 });
-                scoredTrainings.sort((a, b) => b.score - a.score);
-                if (scoredTrainings.length > 0 && scoredTrainings[0].score > 0) { bestAction = scoredTrainings[0].type; }
             }
-            if (bestAction) { handleTrain(gs, bestAction, isSilent); } 
+
+            // Apply custom AI rules
+            scoredTrainings.forEach(t => {
+                const ctx = getActionContext(gs, t.type);
+                t.score += evaluateCustomRulesForAction(aiRules, ctx, t.type);
+            });
+            const restScore = evaluateCustomRulesForAction(aiRules, getActionContext(gs, 'Rest'), 'Rest');
+            scoredTrainings.push({ type: 'Rest', score: restScore, priority: 999 });
+
+            scoredTrainings.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return a.priority - b.priority;
+            });
+
+            const bestAction = scoredTrainings[0] ? scoredTrainings[0].type : null;
+            if (bestAction === 'Rest') { handleRest(gs, isSilent); }
+            else if (bestAction) { handleTrain(gs, bestAction, isSilent); }
             else { handleRest(gs, isSilent); }
         }
 
@@ -1691,6 +1774,30 @@
                 init();
             }
         });
+        aiRulesButton.addEventListener('click', () => {
+            aiRulesInput.value = JSON.stringify(aiRules, null, 2);
+            aiRulesModal.classList.remove('hidden');
+            aiRulesModal.classList.add('flex');
+        });
+        aiRulesCloseButton.addEventListener('click', () => {
+            aiRulesModal.classList.add('hidden');
+            aiRulesModal.classList.remove('flex');
+        });
+        aiRulesModal.querySelector('.modal-bg').addEventListener('click', () => {
+            aiRulesModal.classList.add('hidden');
+            aiRulesModal.classList.remove('flex');
+        });
+        aiRulesSaveButton.addEventListener('click', () => {
+            try {
+                const parsed = JSON.parse(aiRulesInput.value);
+                aiRules = parsed;
+                saveAIRulesToLocalStorage(parsed);
+                aiRulesModal.classList.add('hidden');
+                aiRulesModal.classList.remove('flex');
+            } catch (e) {
+                alert('Invalid JSON for AI rules');
+            }
+        });
         targetPresetSelect.addEventListener('change', (e) => {
             if (e.target.value !== 'custom') {
                 applyTargetPreset(e.target.value);
@@ -1723,6 +1830,7 @@
         loadTargetsFromLocalStorage();
         loadStatBonusesFromLocalStorage();
         loadSettingsFromLocalStorage();
+        aiRules = loadAIRulesFromLocalStorage();
         init();
     });
     </script>
