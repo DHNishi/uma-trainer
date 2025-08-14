@@ -171,6 +171,7 @@
                             <button id="ai-next-day" class="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-lg transition">Run AI Next Day</button>
                             <button id="ai-run-all" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg transition">Run All Days</button>
                         </div>
+                        <button id="ai-program" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition">Program AI</button>
                         <button id="reset-sim" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition mt-2">Reset Simulation</button>
                     </div>
                 </div>
@@ -251,7 +252,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
         <div class="modal-bg absolute inset-0"></div>
@@ -281,6 +282,24 @@
         </div>
     </div>
 
+    <!-- AI Programming Modal -->
+    <div id="ai-program-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">AI Behavior Rules</h3>
+            </div>
+            <div class="p-4">
+                <p class="text-sm text-gray-600 mb-2">Define rules in JSON format. Each rule adds points when conditions match.</p>
+                <textarea id="ai-rules-input" class="w-full border rounded-md p-2 h-64 text-sm font-mono"></textarea>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right space-x-2">
+                <button id="ai-rules-save" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-green-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-green-700">Save</button>
+                <button id="ai-rules-close" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </div>
+
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -297,6 +316,7 @@
         const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
         const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
         const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+        const AI_RULES_STORAGE_KEY = 'trainingSimAiRules';
 
         const TARGET_PRESETS = {
             sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
@@ -375,6 +395,13 @@
         const moodDownChanceInput = document.getElementById('mood-down-chance');
         const delayForRainbowsToggle = document.getElementById('delay-for-rainbows-toggle');
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
+        const aiProgramButton = document.getElementById('ai-program');
+        const aiProgramModal = document.getElementById('ai-program-modal');
+        const aiRulesInput = document.getElementById('ai-rules-input');
+        const aiRulesSaveButton = document.getElementById('ai-rules-save');
+        const aiRulesCloseButton = document.getElementById('ai-rules-close');
+
+        let aiRules = [];
 
         // --- LOCAL STORAGE FUNCTIONS ---
         function saveDeckToLocalStorage() {
@@ -495,11 +522,26 @@
                 }
             };
             currentSettings = savedSettings ? { ...defaultSettings, ...savedSettings } : defaultSettings;
-            
+
             // Update UI elements
             moodDownChanceInput.value = currentSettings.moodDownChance;
             delayForRainbowsToggle.checked = currentSettings.delayForRainbows;
             updateGoalSeekFilterUI();
+        }
+
+        function saveAiRulesToLocalStorage() {
+            localStorage.setItem(AI_RULES_STORAGE_KEY, JSON.stringify(aiRules));
+        }
+
+        function loadAiRulesFromLocalStorage() {
+            const savedRules = localStorage.getItem(AI_RULES_STORAGE_KEY);
+            if (savedRules) {
+                try {
+                    aiRules = JSON.parse(savedRules);
+                } catch (e) {
+                    aiRules = [];
+                }
+            }
         }
 
 
@@ -790,6 +832,17 @@
         function closeModal() {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+
+        function openAiProgramModal() {
+            aiRulesInput.value = JSON.stringify(aiRules, null, 2);
+            aiProgramModal.classList.remove('hidden');
+            aiProgramModal.classList.add('flex');
+        }
+
+        function closeAiProgramModal() {
+            aiProgramModal.classList.add('hidden');
+            aiProgramModal.classList.remove('flex');
         }
 
         function renderCardList() {
@@ -1200,6 +1253,62 @@
             return finalGains;
         }
 
+        function buildTrainingContext(gs, type) {
+            const facility = gs.training[type];
+            const summer = isSummer(gs.day);
+            const effectiveLevel = summer ? 5 : facility.level;
+            const cost = calculateTrainingCost(type, effectiveLevel);
+            const presentCards = gs.supportCards.filter(c => c && c.location === type);
+            const bondBoost = presentCards.some(c => c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD);
+            const hint = presentCards.some(c => c.hasHint);
+            const supports = presentCards.map(c => c.name);
+            const friendshipCount = presentCards.filter(c => c.friendship >= FRIENDSHIP_BOND_THRESHOLD).length;
+            const nonFriendshipCount = presentCards.length - friendshipCount;
+            return { type, cost, bondBoost, hint, supports, friendshipCount, nonFriendshipCount };
+        }
+
+        function evaluateCondition(cond, ctx) {
+            if (!cond) return true;
+            if (cond.and) return cond.and.every(c => evaluateCondition(c, ctx));
+            if (cond.or) return cond.or.some(c => evaluateCondition(c, ctx));
+            if (cond.not) return !evaluateCondition(cond.not, ctx);
+            const field = cond.field || cond.var;
+            const op = cond.op || cond.operator || '==';
+            const value = cond.value;
+            const actual = ctx[field];
+            switch (op) {
+                case '==':
+                case 'equals':
+                    return actual === value;
+                case '!=':
+                    return actual !== value;
+                case '>=':
+                    return actual >= value;
+                case '<=':
+                    return actual <= value;
+                case '>':
+                    return actual > value;
+                case '<':
+                    return actual < value;
+                case 'includes':
+                    return Array.isArray(actual) && actual.includes(value);
+                default:
+                    return false;
+            }
+        }
+
+        function scoreAction(ctx) {
+            if (!Array.isArray(aiRules)) return 0;
+            let score = 0;
+            aiRules.forEach(rule => {
+                if (!rule) return;
+                if (!rule.conditions || evaluateCondition(rule.conditions, ctx)) {
+                    score += rule.points || 0;
+                }
+            });
+            return score;
+        }
+
         function runAITurn(gs, targetStats, bondWeights, delayForRainbows, isSilent = false) {
             if (gs.day === 1 && !gs.initialStatsApplied) {
                 applyInitialCardStats(gs);
@@ -1219,15 +1328,31 @@
                     finalCost = Math.ceil(cost * (1 - friendCard.energy_discount));
                 }
                 const canAfford = gs.energy >= (15 + finalCost);
-                return canAfford ? { type, cost: finalCost } : null; 
+                return canAfford ? { type, cost: finalCost } : null;
             }).filter(Boolean);
 
             if (availableTrainings.length === 0) { handleRest(gs, isSilent); return; }
-            
+
+            if (aiRules.length > 0) {
+                const actions = availableTrainings.map(t => ({
+                    type: t.type,
+                    score: scoreAction(buildTrainingContext(gs, t.type))
+                }));
+                actions.push({ type: 'Rest', score: scoreAction({ type: 'Rest' }) });
+                actions.push({ type: 'Recreation', score: scoreAction({ type: 'Recreation' }) });
+                actions.sort((a, b) => b.score - a.score);
+                if (actions.length > 1 && actions[0].score !== actions[1].score) {
+                    const chosen = actions[0].type;
+                    if (chosen === 'Rest') { handleRest(gs, isSilent); return; }
+                    if (chosen === 'Recreation') { handleRecreate(gs, isSilent); return; }
+                    handleTrain(gs, chosen, isSilent); return;
+                }
+            }
+
             if (delayForRainbows) {
                 const allBonded = gs.supportCards.every(c => !c || c.type === 6 || c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
                 if (allBonded) {
-                    const hasRainbow = ['Speed', 'Stamina', 'Power'].some(type => 
+                    const hasRainbow = ['Speed', 'Stamina', 'Power'].some(type =>
                         gs.supportCards.some(c => c && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD)
                     );
                     if (!hasRainbow) {
@@ -1670,6 +1795,19 @@
         aiNextDayButton.addEventListener('click', runSingleAITurn);
         aiRunAllButton.addEventListener('click', runFullSimulation);
         aiRunMultiButton.addEventListener('click', handleMultiSim);
+        aiProgramButton.addEventListener('click', openAiProgramModal);
+        aiRulesCloseButton.addEventListener('click', closeAiProgramModal);
+        aiRulesSaveButton.addEventListener('click', () => {
+            try {
+                const parsed = JSON.parse(aiRulesInput.value || '[]');
+                aiRules = Array.isArray(parsed) ? parsed : [];
+                saveAiRulesToLocalStorage();
+                closeAiProgramModal();
+            } catch (e) {
+                alert('Invalid JSON for AI rules');
+            }
+        });
+        aiProgramModal.addEventListener('click', (e) => { if (e.target === aiProgramModal) closeAiProgramModal(); });
         goalSeekCloseButton.addEventListener('click', () => {
             goalSeekModal.classList.add('hidden');
             goalSeekModal.classList.remove('flex');
@@ -1723,6 +1861,7 @@
         loadTargetsFromLocalStorage();
         loadStatBonusesFromLocalStorage();
         loadSettingsFromLocalStorage();
+        loadAiRulesFromLocalStorage();
         init();
     });
     </script>
