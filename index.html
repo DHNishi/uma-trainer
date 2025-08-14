@@ -1280,7 +1280,16 @@
                 });
                 const satisfied = rule.match === 'any' ? results.some(Boolean) : results.every(Boolean);
                 if (satisfied) {
-                    total += parseFloat(rule.points) || 0;
+                    let multiplier = 1;
+                    switch (rule.per) {
+                        case 'bondable':
+                            multiplier = context.nonFriendCount;
+                            break;
+                        case 'rainbow':
+                            multiplier = context.rainbowCount;
+                            break;
+                    }
+                    total += (parseFloat(rule.points) || 0) * multiplier;
                 }
             });
             return total;
@@ -1773,6 +1782,11 @@
                         <option value="all"${rule.match === 'any' ? '' : ' selected'}>All conditions (AND)</option>
                         <option value="any"${rule.match === 'any' ? ' selected' : ''}>Any condition (OR)</option>
                     </select>
+                    <select class="rule-per border rounded p-1">
+                        <option value="once"${!rule.per || rule.per === 'once' ? ' selected' : ''}>Once</option>
+                        <option value="bondable"${rule.per === 'bondable' ? ' selected' : ''}>Per bondable</option>
+                        <option value="rainbow"${rule.per === 'rainbow' ? ' selected' : ''}>Per friendship</option>
+                    </select>
                     <button class="remove-rule text-red-500 ml-auto">Remove</button>
                 </div>
                 <div class="conditions space-y-2"></div>
@@ -1908,10 +1922,11 @@
             aiRulesModal.classList.add('hidden');
             aiRulesModal.classList.remove('flex');
         });
-        aiRulesSaveButton.addEventListener('click', () => {
+            aiRulesSaveButton.addEventListener('click', () => {
             customAIRules = [...aiRulesContainer.querySelectorAll('.ai-rule')].map(ruleDiv => {
                 const points = parseFloat(ruleDiv.querySelector('.rule-points').value) || 0;
                 const match = ruleDiv.querySelector('.rule-match').value;
+                const per = ruleDiv.querySelector('.rule-per').value;
                 const conditions = [...ruleDiv.querySelectorAll('.condition-row')].map(condDiv => {
                     const type = condDiv.querySelector('.condition-type').value;
                     const valueEl = condDiv.querySelector('.condition-value');
@@ -1919,7 +1934,7 @@
                     const not = condDiv.querySelector('.condition-not').checked;
                     return { type, value, not };
                 });
-                return { points, match, conditions };
+                return { points, match, per, conditions };
             });
             saveAIRulesToLocalStorage();
             aiRulesModal.classList.add('hidden');
