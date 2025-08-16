@@ -195,7 +195,7 @@
                 <div id="results-container" class="bg-white p-4 rounded-xl shadow-md hidden">
                     <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Analysis Results</h2>
                     <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stat</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Met Target %</th></tr></thead>
+                        <thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stat</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Std Dev</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Met Target %</th></tr></thead>
                         <tbody id="results-body" class="bg-white divide-y divide-gray-200"></tbody>
                     </table>
                 </div>
@@ -1418,9 +1418,18 @@
             statsToAnalyze.forEach(stat => {
                 const values = results.map(r => r[stat]).sort((a, b) => a - b);
                 const sum = values.reduce((acc, v) => acc + v, 0);
+                const mean = sum / values.length;
+                const variance = values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / values.length;
+                const stdDev = Math.sqrt(variance);
                 const mid = Math.floor(values.length / 2);
                 const median = values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
-                analysis[stat] = { min: Math.floor(values[0]), max: Math.floor(values[values.length - 1]), mean: Math.floor(sum / values.length), median: Math.floor(median) };
+                analysis[stat] = {
+                    min: Math.floor(values[0]),
+                    max: Math.floor(values[values.length - 1]),
+                    mean: Math.floor(mean),
+                    median: Math.floor(median),
+                    std: Math.floor(stdDev)
+                };
             });
             
             let tableHTML = STAT_MAP.map(stat => {
@@ -1430,16 +1439,18 @@
                     <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">${stat}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].min}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].mean}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].std}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].max}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800 font-bold">${metTargetPercentage.toFixed(2)}%</td>
                 </tr>`;
             }).join('');
-            
+
             const totalStat = analysis['total'];
              tableHTML += `<tr class="bg-gray-50">
                 <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-gray-900">Total</td>
                 <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.min}</td>
                 <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.mean}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.std}</td>
                 <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.max}</td>
                 <td class="px-4 py-2"></td>
             </tr>`;
