@@ -1322,7 +1322,7 @@
             if (delayForRainbows) {
                 const allBonded = gs.supportCards.every(c => !c || c.type === 6 || c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
                 if (allBonded) {
-                    const hasRainbow = ['Speed', 'Stamina', 'Power'].some(type => 
+                    const hasRainbow = ['Speed', 'Stamina', 'Power'].some(type =>
                         gs.supportCards.some(c => c && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD)
                     );
                     if (!hasRainbow) {
@@ -1334,7 +1334,29 @@
                     }
                 }
             }
-            
+
+            if (customAIRules && customAIRules.length > 0) {
+                const ruleTrainings = availableTrainings.map(t => {
+                    const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                    const priority = TRAINING_PRIORITY.indexOf(t.type);
+                    const score = evaluateCustomRules(t.type, gs, presentCards);
+                    return { ...t, score, priority };
+                });
+                ruleTrainings.sort((a, b) => {
+                    if (a.score !== b.score) return b.score - a.score;
+                    if (a.cost !== b.cost) return a.cost - b.cost;
+                    return a.priority - b.priority;
+                });
+                if (ruleTrainings.length > 0) {
+                    const top = ruleTrainings[0];
+                    const allEqual = ruleTrainings.every(t => t.score === top.score);
+                    if (!allEqual || top.score !== 0) {
+                        handleTrain(gs, top.type, isSilent);
+                        return;
+                    }
+                }
+            }
+
             const needsBonding = gs.supportCards.some(c => c && c.type !== 6 && c.friendship < FRIENDSHIP_BOND_THRESHOLD);
             let bestAction = null;
 
@@ -1354,7 +1376,6 @@
                         }
                     });
                     const priority = TRAINING_PRIORITY.indexOf(t.type);
-                    bondGain += evaluateCustomRules(t.type, gs, presentCards);
                     return { ...t, bondGain, priority };
                 });
                 scoredTrainings.sort((a, b) => {
@@ -1382,13 +1403,12 @@
                             score += usefulGain * priority;
                         }
                     }
-                    score += evaluateCustomRules(t.type, gs, presentCards);
                     return { ...t, score };
                 });
                 scoredTrainings.sort((a, b) => b.score - a.score);
                 if (scoredTrainings.length > 0 && scoredTrainings[0].score > 0) { bestAction = scoredTrainings[0].type; }
             }
-            if (bestAction) { handleTrain(gs, bestAction, isSilent); } 
+            if (bestAction) { handleTrain(gs, bestAction, isSilent); }
             else { handleRest(gs, isSilent); }
         }
 
