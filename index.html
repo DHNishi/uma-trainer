@@ -1591,11 +1591,21 @@
             const analysis = {};
 
             const distance = currentSettings.targetDistance;
-            const baselineGuts = gutsToStamina(distance, 400);
-            results.forEach(r => {
-                const gutsOffset = gutsToStamina(distance, r.guts) - baselineGuts;
-                r.effectiveStamina = Math.floor(r.stamina + gutsOffset);
-            });
+            if (currentSettings.dynamicGutsValuation) {
+                const baselineGuts = GUTS_BASELINES[distance];
+                results.forEach(r => {
+                    const effectiveGuts = Math.max(r.guts, baselineGuts);
+                    const gutsOffset = gutsToStamina(distance, effectiveGuts);
+                    r.effectiveStamina = Math.floor(r.stamina + gutsOffset);
+                    r.total = r.speed + r.power + r.wit + baselineGuts + r.effectiveStamina;
+                });
+            } else {
+                const baselineGutsStam = gutsToStamina(distance, 400);
+                results.forEach(r => {
+                    const gutsOffset = gutsToStamina(distance, r.guts) - baselineGutsStam;
+                    r.effectiveStamina = Math.floor(r.stamina + gutsOffset);
+                });
+            }
 
             const statsToAnalyze = [...STAT_MAP, 'effectiveStamina', 'total'];
             statsToAnalyze.forEach(stat => {
@@ -1709,12 +1719,17 @@
             let totalWeightedSum = 0;
             const statsForCalc = currentSettings.dynamicGutsValuation ? STAT_MAP.filter(s => s !== 'guts') : STAT_MAP;
             const distance = currentSettings.targetDistance;
-            const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, GUTS_BASELINES[distance]) : 0;
-            const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
+            const baselineGuts = GUTS_BASELINES[distance];
+            const baselineGutsContribution = currentSettings.dynamicGutsValuation
+                ? Math.min(baselineGuts, targetStats.values.guts) * targetStats.priorities.guts
+                : 0;
+            const targetEffectiveStamina = targetStats.values.stamina;
             for (let i = 0; i < numRuns; i++) {
                 const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows);
-                const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, result.guts) : 0;
-                const weightedTotal = statsForCalc.reduce((sum, stat) => {
+                const currentGutsOffset = currentSettings.dynamicGutsValuation
+                    ? gutsToStamina(distance, Math.max(result.guts, baselineGuts))
+                    : 0;
+                const statWeighted = statsForCalc.reduce((sum, stat) => {
                     let statValue = result[stat];
                     let targetValue = targetStats.values[stat];
                     if (currentSettings.dynamicGutsValuation && stat === 'stamina') {
@@ -1724,6 +1739,9 @@
                     const priority = targetStats.priorities[stat];
                     return sum + Math.min(statValue, targetValue) * priority;
                 }, 0);
+                const weightedTotal = currentSettings.dynamicGutsValuation
+                    ? baselineGutsContribution + statWeighted
+                    : statWeighted;
                 totalWeightedSum += weightedTotal;
             }
             return totalWeightedSum / numRuns;
