@@ -1412,7 +1412,7 @@
                 const futureBonus = calculateUpcomingBonuses(gs);
                 const distance = currentSettings.targetDistance;
                 const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, gs.stats.guts + futureBonus) : 0;
-                const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, targetStats.values.guts || 0) : 0;
+                const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, GUTS_BASELINES[distance]) : 0;
                 const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
                 const scoredTrainings = availableTrainings.map(t => {
                     const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
@@ -1692,7 +1692,7 @@
             let totalWeightedSum = 0;
             const statsForCalc = currentSettings.dynamicGutsValuation ? STAT_MAP.filter(s => s !== 'guts') : STAT_MAP;
             const distance = currentSettings.targetDistance;
-            const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, targetStats.values.guts || 0) : 0;
+            const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, GUTS_BASELINES[distance]) : 0;
             const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
             for (let i = 0; i < numRuns; i++) {
                 const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows);
