@@ -364,6 +364,7 @@
         let activeSlotIndex = -1;
         let previousStats = null;
         let goalSeekSlotIndex = -1;
+        let goalSeekCache = {};
         let currentSettings = {};
         let initialStartingStats = {};
 
@@ -720,6 +721,7 @@
                     hideTooltip();
                     const index = parseInt(removeBtn.dataset.index);
                     selectedCards[index] = null;
+                    invalidateGoalSeekCache(index);
                     renderCardSlot(index);
                     saveDeckToLocalStorage();
                     init();
@@ -741,6 +743,7 @@
                     const allVersions = ALL_CARDS_DATA.filter(c => c.id === cardId);
                     const highestLbVersion = allVersions.sort((a, b) => b.limit_break - a.limit_break)[0];
                     selectedCards[activeSlotIndex] = { ...highestLbVersion };
+                    invalidateGoalSeekCache(activeSlotIndex);
                     renderCardSlot(activeSlotIndex);
                     saveDeckToLocalStorage();
                     closeModal();
@@ -756,6 +759,7 @@
                         const newCardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === newLb);
                         if (newCardData) {
                             selectedCards[index] = { ...newCardData };
+                            invalidateGoalSeekCache(index);
                             saveDeckToLocalStorage();
                             init();
                         }
@@ -856,6 +860,21 @@
                 const cardData = ALL_CARDS_DATA.find(c => c.id === cardInfo.id && c.limit_break === cardInfo.limit_break);
                 return cardData || ALL_CARDS_DATA.find(c => c.id === cardInfo.id);
             }).filter(Boolean);
+        }
+
+        function getDeckStateExcludingSlot(slotIndex) {
+            return JSON.stringify(selectedCards.map((card, idx) => {
+                if (idx === slotIndex) return null;
+                return card ? { id: card.id, limit_break: card.limit_break } : null;
+            }));
+        }
+
+        function invalidateGoalSeekCache(changedSlotIndex) {
+            for (const slot in goalSeekCache) {
+                if (parseInt(slot) !== changedSlotIndex) {
+                    delete goalSeekCache[slot];
+                }
+            }
         }
 
         function updateUI() {
@@ -1517,6 +1536,13 @@
         async function handleGoalSeek(slotIndex) {
             if (isSimulating) return;
             goalSeekSlotIndex = slotIndex;
+            const deckState = getDeckStateExcludingSlot(slotIndex);
+            const cacheEntry = goalSeekCache[slotIndex];
+            if (cacheEntry && cacheEntry.deckState === deckState) {
+                displayGoalSeekResults(cacheEntry.results);
+                return;
+            }
+
             disableAllButtons();
             isSimulating = true;
             progressContainer.classList.remove('hidden');
@@ -1537,7 +1563,7 @@
                 progressBar.style.width = `${((i + 1) / totalCards) * 100}%`;
 
                 selectedCards[slotIndex] = { ...card };
-                
+
                 const meanWeightedTotal = await runGoalSeekAnalysis(100);
                 goalSeekResults.push({ card: card, meanWeightedTotal });
 
@@ -1547,6 +1573,7 @@
             selectedCards[slotIndex] = null; // Clear the slot
             goalSeekResults.sort((a, b) => b.meanWeightedTotal - a.meanWeightedTotal);
             displayGoalSeekResults(goalSeekResults);
+            goalSeekCache[slotIndex] = { deckState, results: goalSeekResults };
 
             progressContainer.classList.add('hidden');
             isSimulating = false;
@@ -1835,6 +1862,7 @@
             const cardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === cardLb);
             if (cardData) {
                 selectedCards[goalSeekSlotIndex] = { ...cardData };
+                invalidateGoalSeekCache(goalSeekSlotIndex);
                 renderCardSlot(goalSeekSlotIndex);
                 saveDeckToLocalStorage();
                 goalSeekModal.classList.add('hidden');
