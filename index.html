@@ -571,6 +571,7 @@
                 stats: getStartingStatsFromUI(),
                 training: { Speed: { level: 1, uses: 0 }, Stamina: { level: 1, uses: 0 }, Power: { level: 1, uses: 0 }, Guts: { level: 1, uses: 0 }, Wit: { level: 1, uses: 0 } },
                 supportCards: [], primaryStat: 'Speed', log: [],
+                reporter: { bond: 0, location: null },
                 characterBonuses: getStatBonusesFromUI(),
                 initialStatsApplied: false,
                 isSilent: isSilent
@@ -606,6 +607,7 @@
                 gameState = localGameState;
                 logEvent('Simulation ready. Press a run button to start.', 'system');
                 placeSupportCards(gameState);
+                placeReporter(gameState);
                 enableAllButtons();
                 updateUI();
             }
@@ -953,7 +955,10 @@
                 const canAfford = gameState.energy >= (15 + finalCost);
                 const isDisabled = !canAfford || isSimulating;
                 const levelDisplay = summer ? `Lvl 5 (Summer)` : `Lvl ${facility.level}`;
-                const presentCardsString = presentCards.length > 0 ? 'Friends: ' + presentCards.map(c => `${c.name}${c.hasHint ? ' <span class="text-yellow-500 font-bold">(Hint!)</span>' : ''}`).join(', ') : 'No friends present.';
+                const reporterHere = gameState.reporter && gameState.reporter.location === type;
+                const participants = presentCards.map(c => `${c.name}${c.hasHint ? ' <span class=\"text-yellow-500 font-bold\">(Hint!)</span>' : ''}`);
+                if (reporterHere) participants.push('Reporter');
+                const presentCardsString = participants.length > 0 ? 'Friends: ' + participants.join(', ') : 'No friends present.';
                 
                 return `<button data-type="${type}" class="train-action w-full text-left p-3 rounded-lg border-2 transition ${!isDisabled ? 'hover:border-blue-500 hover:bg-blue-50' : 'opacity-50 cursor-not-allowed'}" ${isDisabled ? 'disabled' : ''}>
                             <div class="flex justify-between items-center">
@@ -1005,6 +1010,26 @@
             });
         }
 
+        function placeReporter(gs) {
+            if (!gs.reporter) return;
+            if (gs.day < 15 || gs.day > 65) { gs.reporter.location = null; return; }
+            const locations = [...TRAINING_TYPES, null];
+            const baseWeight = 100;
+            const offTrainingWeight = 50;
+            const weights = new Map();
+            let totalWeight = 0;
+            locations.forEach(loc => {
+                const weight = loc ? baseWeight : offTrainingWeight;
+                weights.set(loc, weight);
+                totalWeight += weight;
+            });
+            let random = Math.random() * totalWeight;
+            for (const [location, weight] of weights.entries()) {
+                if (random < weight) { gs.reporter.location = location; break; }
+                random -= weight;
+            }
+        }
+
         function handleTrain(gs, type, isSilent = false) {
             const facility = gs.training[type];
             const summer = isSummer(gs.day);
@@ -1028,6 +1053,16 @@
                 gs.stats[stat] += applied;
                 appliedGains[stat] = applied;
                 gainStrings.push(`+${Math.floor(applied)} ${stat}`);
+            }
+            if (gs.reporter && gs.reporter.location === type) {
+                const primaryStat = STAT_MAP[TRAINING_TYPES.indexOf(type)];
+                const remainingCap = 100 - (appliedGains[primaryStat] || 0);
+                const reporterBoost = Math.min(3, remainingCap);
+                gs.stats[primaryStat] += reporterBoost;
+                appliedGains[primaryStat] = (appliedGains[primaryStat] || 0) + reporterBoost;
+                gainStrings.push(`+${reporterBoost} ${primaryStat} (Reporter)`);
+                gs.reporter.bond = Math.min(100, gs.reporter.bond + 5);
+                if (!isSilent) logEvent(`Reporter covered your training! Bond increased to ${gs.reporter.bond}.`, 'event');
             }
             if (!isSilent) logEvent(`Trained ${type}. Gains: ${gainStrings.join(', ') || 'None'}.`, 'train');
 
@@ -1193,7 +1228,7 @@
                 }
             }
 
-            if (gs.day <= 65) { placeSupportCards(gs); }
+            if (gs.day <= 65) { placeSupportCards(gs); placeReporter(gs); }
             if (!isSilent) { updateUI(); }
         }
 
@@ -1234,6 +1269,15 @@
                     logEvent(`Received a final +6 to all stats from Friend Card! (Capped at 1200)`, 'event');
                 }
             }
+            if (gs.reporter) {
+                if (gs.reporter.bond >= 100) {
+                    STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 5, 1200));
+                    if (!gs.isSilent) logEvent(`Reporter Bonus! Gained 5 to all stats.`, 'event');
+                } else if (gs.reporter.bond >= 60) {
+                    STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 3, 1200));
+                    if (!gs.isSilent) logEvent(`Reporter Bonus! Gained 3 to all stats.`, 'event');
+                }
+            }
         }
 
         function gameOver() {
@@ -1271,6 +1315,10 @@
                 const characterBonusMultiplier = 1 + gs.characterBonuses[stat];
                 const calculatedGain = tempGains[stat] * moodMultiplier * trainingEffectivenessMultiplier * friendshipMultiplier * characterBonusMultiplier;
                 finalGains[stat] = Math.min(100, calculatedGain);
+            }
+            const primaryStat = STAT_MAP[TRAINING_TYPES.indexOf(type)];
+            if (gs.reporter && gs.reporter.location === type) {
+                finalGains[primaryStat] = Math.min(100, (finalGains[primaryStat] || 0) + 3);
             }
             return finalGains;
         }
@@ -1462,6 +1510,7 @@
             const localGS = init(true);
             applyInitialCardStats(localGS);
             placeSupportCards(localGS);
+            placeReporter(localGS);
             while(localGS.day <= 65) {
                 runAITurn(localGS, targetStats, bondWeights, delayForRainbows, true);
             }
