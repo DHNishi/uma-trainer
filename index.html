@@ -360,6 +360,7 @@
         function gutsGainToStamina(distance, currentGuts, gain) {
             const baseline = GUTS_BASELINES[distance] || 0;
             const effectiveGuts = Math.max(currentGuts, baseline);
+            // return gutsToStamina(distance, currentGuts + gain) - gutsToStamina(distance, currentGuts);
             return gutsToStamina(distance, effectiveGuts + gain) - gutsToStamina(distance, effectiveGuts);
         }
 
