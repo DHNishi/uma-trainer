@@ -1207,8 +1207,7 @@
             const totalRaceBonusPercent = gs.supportCards.reduce((sum, card) => sum + (card ? card.race_bonus : 0), 0) / 100;
             const smallRacePoints = 9 * Math.floor(3 * (1 + totalRaceBonusPercent));
             const largeRacePoints = 3 * Math.floor(10 * (1 + totalRaceBonusPercent));
-            const totalRacePoints = smallRacePoints + largeRacePoints;
-            const raceBonusPerStat = Math.floor(totalRacePoints / 5);
+            const raceBonusPerStat = smallRacePoints + largeRacePoints;
 
             if (raceBonusPerStat > 0) {
                 STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + raceBonusPerStat, 1200));
