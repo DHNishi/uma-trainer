@@ -650,6 +650,7 @@
                 // Any manual change sets preset to custom
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
                     targetPresetSelect.value = 'custom';
+                    invalidateGoalSeekCache();
                 }
                 saveTargetsToLocalStorage();
             });
@@ -675,6 +676,7 @@
             statsContainer.addEventListener('change', (e) => {
                 if (e.target.classList.contains('character-bonus-select')) {
                     saveStatBonusesToLocalStorage();
+                    invalidateGoalSeekCache();
                     init();
                 }
             });
@@ -682,6 +684,7 @@
                 if (e.target.classList.contains('starting-stat-input')) {
                     saveStartingStatsToLocalStorage();
                     initialStartingStats = getStartingStatsFromUI(); // Update the stored initial state
+                    invalidateGoalSeekCache();
                 }
             });
         }
@@ -1789,6 +1792,7 @@
                 }
             }
             saveTargetsToLocalStorage(); // Save after applying
+            invalidateGoalSeekCache();
         }
         
         function updateGoalSeekFilterUI() {
@@ -1884,6 +1888,8 @@
         targetPresetSelect.addEventListener('change', (e) => {
             if (e.target.value !== 'custom') {
                 applyTargetPreset(e.target.value);
+            } else {
+                invalidateGoalSeekCache();
             }
         });
         settingsButton.addEventListener('click', () => {
@@ -1909,10 +1915,12 @@
             const gutsPrioritySelect = document.getElementById('priority-guts');
             if (gutsPrioritySelect) gutsPrioritySelect.disabled = e.target.checked;
             saveSettingsToLocalStorage();
+            invalidateGoalSeekCache();
         });
         targetDistanceSelect.addEventListener('change', (e) => {
             currentSettings.targetDistance = parseInt(e.target.value);
             saveSettingsToLocalStorage();
+            invalidateGoalSeekCache();
         });
 
         // --- START SIMULATION ---
