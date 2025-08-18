@@ -129,7 +129,8 @@
                     <div id="support-cards-content" class="collapsible-content space-y-2">
                         <div id="support-card-slots"></div>
                         <div class="mt-2 flex space-x-2">
-                            <button id="save-deck-btn" class="flex-1 p-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Save Deck</button>
+                            <input id="deck-name-input" type="text" placeholder="Deck name" class="flex-1 p-2 border rounded-lg text-sm">
+                            <button id="save-deck-btn" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Save Deck</button>
                             <select id="saved-decks-select" class="flex-1 p-2 border rounded-lg text-sm">
                                 <option value="">Load Deck...</option>
                             </select>
@@ -395,6 +396,7 @@
         const deckOptimizeButton = document.getElementById('deck-optimize-btn');
         const saveDeckButton = document.getElementById('save-deck-btn');
         const savedDecksSelect = document.getElementById('saved-decks-select');
+        const deckNameInput = document.getElementById('deck-name-input');
         const targetStatsInputsContainer = document.getElementById('target-stats-inputs');
         const statsContainer = document.getElementById('stats-container');
         const aiNextDayButton = document.getElementById('ai-next-day');
@@ -495,11 +497,12 @@
         }
 
         function saveCurrentDeck() {
-            const name = prompt('Enter deck name:');
+            const name = deckNameInput.value.trim();
             if (!name) return;
             savedDecks[name] = selectedCards.map(c => c ? { ...c } : null);
             saveDeckListToLocalStorage();
             populateSavedDecksSelect();
+            deckNameInput.value = '';
         }
 
         function loadSavedDeck(name) {
