@@ -959,6 +959,7 @@
         function setButtonsState(enabled) {
             isSimulating = !enabled;
             [aiNextDayButton, aiRunAllButton, restButton, recreateButton, aiRunMultiButton].forEach(b => b.disabled = !enabled);
+            document.querySelectorAll('.goal-seek-btn').forEach(btn => btn.disabled = !enabled);
             updateTrainingActionsUI();
         }
         
