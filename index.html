@@ -1690,7 +1690,7 @@
 
             progressContainer.classList.add('hidden');
             isSimulating = false;
-            enableAllButtons();
+            await handleMultiSim(); // Run deck analysis after optimization
         }
 
         function displayGoalSeekResults(results) {
