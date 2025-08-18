@@ -99,6 +99,7 @@
                     <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
                     <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
                 </div>
+                <button id="owned-cards-button" class="text-gray-500 hover:text-gray-700">Cards</button>
                 <button id="settings-button" class="text-gray-500 hover:text-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -295,9 +296,31 @@
             <div class="px-4 py-3 bg-gray-50 text-right">
                 <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
             </div>
-        </div>
+    </div>
     </div>
 
+    <!-- Owned Cards Modal -->
+    <div id="owned-cards-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Owned Cards</h3>
+            </div>
+            <div class="p-4 space-y-4">
+                <div class="flex space-x-2">
+                    <input id="owned-card-search" type="text" placeholder="Search..." class="flex-1 border rounded-md p-2">
+                    <select id="owned-card-type-filter" class="border rounded-md p-2">
+                        <option value="-1">All Types</option>
+                    </select>
+                </div>
+                <div id="owned-card-list" class="max-h-80 overflow-y-auto border rounded-md"></div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right space-x-2">
+                <button id="owned-cards-save-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Save</button>
+                <button id="owned-cards-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -314,6 +337,7 @@
         const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
         const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
         const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+        const OWNED_CARDS_STORAGE_KEY = 'trainingSimOwnedCards';
 
         const TARGET_PRESETS = {
             sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
@@ -361,6 +385,7 @@
         let gameState;
         let isSimulating = false;
         let selectedCards = new Array(6).fill(null);
+        let ownedCards = {};
         let activeSlotIndex = -1;
         let previousStats = null;
         let goalSeekSlotIndex = -1;
@@ -409,6 +434,13 @@
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
         const dynamicGutsToggle = document.getElementById('dynamic-guts-toggle');
         const targetDistanceSelect = document.getElementById('target-distance-select');
+        const ownedCardsButton = document.getElementById('owned-cards-button');
+        const ownedCardsModal = document.getElementById('owned-cards-modal');
+        const ownedCardsModalCloseButton = document.getElementById('owned-cards-modal-close-button');
+        const ownedCardsSaveButton = document.getElementById('owned-cards-save-button');
+        const ownedCardListContainer = document.getElementById('owned-card-list');
+        const ownedCardSearchInput = document.getElementById('owned-card-search');
+        const ownedCardTypeFilter = document.getElementById('owned-card-type-filter');
 
         // --- LOCAL STORAGE FUNCTIONS ---
         function saveDeckToLocalStorage() {
@@ -419,6 +451,21 @@
             const savedDeck = localStorage.getItem(DECK_STORAGE_KEY);
             if (savedDeck) {
                 selectedCards = JSON.parse(savedDeck);
+            }
+        }
+
+        function saveOwnedCardsToLocalStorage() {
+            localStorage.setItem(OWNED_CARDS_STORAGE_KEY, JSON.stringify(ownedCards));
+        }
+
+        function loadOwnedCardsFromLocalStorage() {
+            const savedOwned = localStorage.getItem(OWNED_CARDS_STORAGE_KEY);
+            if (savedOwned) {
+                try {
+                    ownedCards = JSON.parse(savedOwned);
+                } catch {
+                    ownedCards = {};
+                }
             }
         }
 
@@ -686,6 +733,7 @@
         }
 
         function setupCardSelector() {
+            loadOwnedCardsFromLocalStorage();
             loadDeckFromLocalStorage();
 
             if (!selectedCards[0]) {
@@ -709,6 +757,34 @@
             renderAllCardSlots();
             loadBondWeightsFromLocalStorage(); // Load after slots are rendered
             cardTypeFilter.innerHTML = `<option value="-1">All Types</option>` + TYPE_MAP.map((type, i) => type ? `<option value="${i}">${type}</option>` : '').join('');
+            ownedCardTypeFilter.innerHTML = cardTypeFilter.innerHTML;
+            ownedCardsButton.addEventListener('click', () => {
+                renderOwnedCardList();
+                ownedCardsModal.classList.remove('hidden');
+            });
+            ownedCardsModalCloseButton.addEventListener('click', () => ownedCardsModal.classList.add('hidden'));
+            ownedCardsModal.addEventListener('click', (e) => { if (e.target === ownedCardsModal) ownedCardsModal.classList.add('hidden'); });
+            ownedCardSearchInput.addEventListener('input', renderOwnedCardList);
+            ownedCardTypeFilter.addEventListener('change', renderOwnedCardList);
+            ownedCardListContainer.addEventListener('change', (e) => {
+                if (e.target.classList.contains('owned-card-checkbox')) {
+                    const id = e.target.dataset.id;
+                    const select = ownedCardListContainer.querySelector(`select[data-id="${id}"]`);
+                    if (select) select.disabled = !e.target.checked;
+                }
+            });
+            ownedCardsSaveButton.addEventListener('click', () => {
+                ownedCards = {};
+                ownedCardListContainer.querySelectorAll('.owned-card-checkbox').forEach(cb => {
+                    const id = cb.dataset.id;
+                    if (cb.checked) {
+                        const lb = parseInt(ownedCardListContainer.querySelector(`select[data-id="${id}"]`).value);
+                        ownedCards[id] = lb;
+                    }
+                });
+                saveOwnedCardsToLocalStorage();
+                ownedCardsModal.classList.add('hidden');
+            });
             supportCardSlotsContainer.addEventListener('click', (e) => {
                 const slot = e.target.closest('.card-slot-btn');
                 if (slot) {
@@ -848,6 +924,32 @@
                     <div><p class="font-semibold">${card.char_name}</p><p class="text-sm text-gray-600">${TYPE_MAP[card.type]}</p></div>
                     <span class="text-sm font-bold">${RARITY_MAP[card.rarity]}</span>
                 </div>`).join('');
+        }
+
+        function renderOwnedCardList() {
+            const typeFilter = parseInt(ownedCardTypeFilter.value);
+            const searchQuery = ownedCardSearchInput.value.toLowerCase().trim();
+            const filtered = UNIQUE_CARDS_DATA
+                .filter(c => {
+                    const typeMatch = typeFilter === -1 || c.type === typeFilter;
+                    const nameMatch = searchQuery === '' || c.char_name.toLowerCase().includes(searchQuery);
+                    return typeMatch && nameMatch;
+                })
+                .sort((a,b) => b.rarity - a.rarity || a.char_name.localeCompare(b.char_name));
+
+            ownedCardListContainer.innerHTML = filtered.map(card => {
+                const checked = ownedCards[card.id] !== undefined ? 'checked' : '';
+                const lbValue = ownedCards[card.id] ?? 0;
+                const options = [0,1,2,3,4,5].map(lb => `<option value="${lb}" ${lb === lbValue ? 'selected' : ''}>LB${lb}</option>`).join('');
+                const disabled = checked ? '' : 'disabled';
+                return `<div class="card-select-item p-3 border-b flex items-center justify-between">
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" class="owned-card-checkbox" data-id="${card.id}" ${checked}>
+                                <span>${card.char_name} <span class="text-xs text-gray-500">${RARITY_MAP[card.rarity]} - ${TYPE_MAP[card.type]}</span></span>
+                            </label>
+                            <select class="owned-card-lb border rounded p-1" data-id="${card.id}" ${disabled}>${options}</select>
+                        </div>`;
+            }).join('');
         }
 
         function getDeckFromUI() {
@@ -1523,6 +1625,8 @@
 
             const existingCardNames = selectedCards.filter(Boolean).map(c => c.char_name);
             const cardPool = ALL_CARDS_DATA.filter(c => {
+                const ownedLb = ownedCards[c.id];
+                if (ownedLb === undefined || c.limit_break !== ownedLb) return false;
                 const rarityStr = RARITY_MAP[c.rarity];
                 const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
                 return allowedLBs.includes(c.limit_break) && !existingCardNames.includes(c.char_name);
@@ -1641,6 +1745,8 @@
             progressContainer.classList.remove('hidden');
 
             const cardPool = ALL_CARDS_DATA.filter(c => {
+                const ownedLb = ownedCards[c.id];
+                if (ownedLb === undefined || c.limit_break !== ownedLb) return false;
                 const rarityStr = RARITY_MAP[c.rarity];
                 const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
                 return allowedLBs.includes(c.limit_break);
