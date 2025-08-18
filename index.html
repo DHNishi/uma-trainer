@@ -1160,8 +1160,7 @@
 
         function logEvent(message, type = 'system') {
             if (gameState) {
-                gameState.log.unshift({ day: gameState.day, message, type });
-                if (gameState.log.length > 100) gameState.log.pop();
+                gameState.log.push({ day: gameState.day, message, type });
             }
         }
         
