@@ -99,7 +99,6 @@
                     <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
                     <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
                 </div>
-                <button id="owned-cards-button" class="text-gray-500 hover:text-gray-700">Cards</button>
                 <button id="settings-button" class="text-gray-500 hover:text-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -129,6 +128,11 @@
                     </div>
                     <div id="support-cards-content" class="collapsible-content space-y-2">
                         <div id="support-card-slots"></div>
+                        <div class="flex items-center space-x-2 mt-2">
+                            <input type="checkbox" id="restrict-owned-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <label for="restrict-owned-toggle" class="text-sm text-gray-700">Restrict to owned cards</label>
+                            <button id="owned-cards-button" class="text-sm text-blue-600 underline">Manage</button>
+                        </div>
                         <div class="mt-2">
                             <button id="deck-optimize-btn" class="w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Optimize Deck</button>
                         </div>
@@ -331,6 +335,7 @@
         const STAT_MAP = ['speed', 'stamina', 'power', 'guts', 'wit'];
         const TYPE_MAP = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit', '', 'Friend'];
         const RARITY_MAP = {1: 'R', 2: 'SR', 3: 'SSR'};
+        const MAX_LIMIT_BREAK = 5;
         const DECK_STORAGE_KEY = 'trainingSimDeck';
         const TARGETS_STORAGE_KEY = 'trainingSimTargets';
         const STAT_BONUS_STORAGE_KEY = 'trainingSimStatBonuses';
@@ -441,6 +446,7 @@
         const ownedCardListContainer = document.getElementById('owned-card-list');
         const ownedCardSearchInput = document.getElementById('owned-card-search');
         const ownedCardTypeFilter = document.getElementById('owned-card-type-filter');
+        const restrictOwnedToggle = document.getElementById('restrict-owned-toggle');
 
         // --- LOCAL STORAGE FUNCTIONS ---
         function saveDeckToLocalStorage() {
@@ -570,12 +576,13 @@
                 moodDownChance: 2.5,
                 delayForRainbows: false,
                 goalSeekLBs: {
-                    SSR: [0, 2, 4],
-                    SR: [0, 2, 4],
-                    R: [4]
+                    SSR: [0, 2, 4, 5],
+                    SR: [0, 2, 4, 5],
+                    R: [4, 5]
                 },
                 dynamicGutsValuation: false,
-                targetDistance: 2400
+                targetDistance: 2400,
+                restrictToOwned: false
             };
             currentSettings = { ...defaultSettings, ...savedSettings };
 
@@ -585,6 +592,7 @@
             dynamicGutsToggle.checked = currentSettings.dynamicGutsValuation;
             targetDistanceSelect.value = currentSettings.targetDistance;
             targetDistanceSelect.disabled = !currentSettings.dynamicGutsValuation;
+            restrictOwnedToggle.checked = currentSettings.restrictToOwned;
             const gutsPrioritySelect = document.getElementById('priority-guts');
             if (gutsPrioritySelect) gutsPrioritySelect.disabled = currentSettings.dynamicGutsValuation;
             updateGoalSeekFilterUI();
@@ -785,6 +793,10 @@
                 saveOwnedCardsToLocalStorage();
                 ownedCardsModal.classList.add('hidden');
             });
+            restrictOwnedToggle.addEventListener('change', (e) => {
+                currentSettings.restrictToOwned = e.target.checked;
+                saveSettingsToLocalStorage();
+            });
             supportCardSlotsContainer.addEventListener('click', (e) => {
                 const slot = e.target.closest('.card-slot-btn');
                 if (slot) {
@@ -829,9 +841,10 @@
                     if (selectedCards[index]) {
                         const cardId = selectedCards[index].id;
                         const newLb = parseInt(e.target.value);
-                        const newCardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === newLb);
+                        const datasetLb = Math.min(newLb, 4);
+                        const newCardData = ALL_CARDS_DATA.find(c => c.id === cardId && c.limit_break === datasetLb);
                         if (newCardData) {
-                            selectedCards[index] = { ...newCardData };
+                            selectedCards[index] = { ...newCardData, limit_break: newLb };
                             saveDeckToLocalStorage();
                             init();
                         }
@@ -871,7 +884,7 @@
             const slotContainer = document.getElementById(`card-slot-${index}`);
             const card = selectedCards[index];
             if (card) {
-                const availableLBs = ALL_CARDS_DATA.filter(c => c.id === card.id).map(c => c.limit_break).sort((a,b) => b-a);
+                const availableLBs = Array.from({ length: MAX_LIMIT_BREAK + 1 }, (_, i) => i);
                 slotContainer.innerHTML = `
                     <div class="card-slot-rendered p-2 border rounded-lg flex items-center justify-between bg-white">
                         <div class="flex-grow">
@@ -940,7 +953,7 @@
             ownedCardListContainer.innerHTML = filtered.map(card => {
                 const checked = ownedCards[card.id] !== undefined ? 'checked' : '';
                 const lbValue = ownedCards[card.id] ?? 0;
-                const options = [0,1,2,3,4,5].map(lb => `<option value="${lb}" ${lb === lbValue ? 'selected' : ''}>LB${lb}</option>`).join('');
+                const options = Array.from({ length: MAX_LIMIT_BREAK + 1 }, (_, lb) => `<option value="${lb}" ${lb === lbValue ? 'selected' : ''}>LB${lb}</option>`).join('');
                 const disabled = checked ? '' : 'disabled';
                 return `<div class="card-select-item p-3 border-b flex items-center justify-between">
                             <label class="flex items-center space-x-2">
@@ -955,8 +968,10 @@
         function getDeckFromUI() {
             return selectedCards.map(cardInfo => {
                 if (!cardInfo) return null;
-                const cardData = ALL_CARDS_DATA.find(c => c.id === cardInfo.id && c.limit_break === cardInfo.limit_break);
-                return cardData || ALL_CARDS_DATA.find(c => c.id === cardInfo.id);
+                const baseLb = Math.min(cardInfo.limit_break, 4);
+                const cardData = ALL_CARDS_DATA.find(c => c.id === cardInfo.id && c.limit_break === baseLb)
+                    || ALL_CARDS_DATA.find(c => c.id === cardInfo.id);
+                return cardData ? { ...cardData, limit_break: cardInfo.limit_break } : null;
             }).filter(Boolean);
         }
 
@@ -1624,9 +1639,18 @@
             progressContainer.classList.remove('hidden');
 
             const existingCardNames = selectedCards.filter(Boolean).map(c => c.char_name);
-            const cardPool = ALL_CARDS_DATA.filter(c => {
-                const ownedLb = ownedCards[c.id];
-                if (ownedLb === undefined || c.limit_break !== ownedLb) return false;
+            const restrictOwned = currentSettings.restrictToOwned && Object.keys(ownedCards).length > 0;
+            let cardPool;
+            if (restrictOwned) {
+                cardPool = Object.entries(ownedCards).map(([id, lb]) => {
+                    const datasetLb = Math.min(lb, 4);
+                    const card = ALL_CARDS_DATA.find(c => c.id === parseInt(id) && c.limit_break === datasetLb);
+                    return card ? { ...card, limit_break: lb } : null;
+                }).filter(Boolean);
+            } else {
+                cardPool = ALL_CARDS_DATA.map(c => ({ ...c }));
+            }
+            cardPool = cardPool.filter(c => {
                 const rarityStr = RARITY_MAP[c.rarity];
                 const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
                 return allowedLBs.includes(c.limit_break) && !existingCardNames.includes(c.char_name);
@@ -1744,9 +1768,18 @@
             isSimulating = true;
             progressContainer.classList.remove('hidden');
 
-            const cardPool = ALL_CARDS_DATA.filter(c => {
-                const ownedLb = ownedCards[c.id];
-                if (ownedLb === undefined || c.limit_break !== ownedLb) return false;
+            const restrictOwned = currentSettings.restrictToOwned && Object.keys(ownedCards).length > 0;
+            let cardPool;
+            if (restrictOwned) {
+                cardPool = Object.entries(ownedCards).map(([id, lb]) => {
+                    const datasetLb = Math.min(lb, 4);
+                    const card = ALL_CARDS_DATA.find(c => c.id === parseInt(id) && c.limit_break === datasetLb);
+                    return card ? { ...card, limit_break: lb } : null;
+                }).filter(Boolean);
+            } else {
+                cardPool = ALL_CARDS_DATA.map(c => ({ ...c }));
+            }
+            cardPool = cardPool.filter(c => {
                 const rarityStr = RARITY_MAP[c.rarity];
                 const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
                 return allowedLBs.includes(c.limit_break);
@@ -1872,7 +1905,7 @@
                 label.textContent = rarity;
                 div.appendChild(label);
 
-                [0, 2, 4].forEach(lb => {
+                [0, 2, 4, 5].forEach(lb => {
                     const checkboxId = `gs-${rarity}-${lb}`;
                     const checkboxWrapper = document.createElement('div');
                     checkboxWrapper.className = 'flex items-center';
