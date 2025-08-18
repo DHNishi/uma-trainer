@@ -1621,29 +1621,33 @@
             return score;
         }
 
-        async function optimizeDeck(cardPool, iterations = 200, runsPerEval = 30) {
+        async function optimizeDeck(cardPool, lockedCards = [], iterations = 200, runsPerEval = 30) {
             function getRandomDeck() {
-                const deck = [];
-                const used = new Set();
-                while (deck.length < 6) {
-                    const card = cardPool[Math.floor(Math.random() * cardPool.length)];
-                    if (!used.has(card.char_name)) {
-                        deck.push({ ...card });
-                        used.add(card.char_name);
-                    }
+                const deck = lockedCards.map(c => c ? { ...c } : null);
+                const used = new Set(deck.filter(Boolean).map(c => c.char_name));
+                for (let i = 0; i < 6; i++) {
+                    if (deck[i]) continue;
+                    let card;
+                    do {
+                        card = cardPool[Math.floor(Math.random() * cardPool.length)];
+                    } while (used.has(card.char_name));
+                    deck[i] = { ...card };
+                    used.add(card.char_name);
                 }
                 return deck;
             }
+
+            const unlockedIndices = [...Array(6).keys()].filter(i => !lockedCards[i]);
 
             let currentDeck = getRandomDeck();
             let currentScore = await evaluateDeck(currentDeck, runsPerEval);
             let bestDeck = currentDeck.slice();
             let bestScore = currentScore;
 
-            for (let i = 0; i < iterations; i++) {
+            for (let i = 0; i < iterations && unlockedIndices.length > 0; i++) {
                 const temp = 1 - i / iterations;
                 const newDeck = currentDeck.map(c => ({ ...c }));
-                const replaceIndex = Math.floor(Math.random() * 6);
+                const replaceIndex = unlockedIndices[Math.floor(Math.random() * unlockedIndices.length)];
                 const usedNames = new Set(newDeck.map(c => c.char_name));
                 usedNames.delete(newDeck[replaceIndex].char_name);
                 let newCard;
@@ -1679,7 +1683,7 @@
                 return allowedLBs.includes(c.limit_break);
             });
 
-            const bestDeck = await optimizeDeck(cardPool);
+            const bestDeck = await optimizeDeck(cardPool, selectedCards.map(c => c ? { ...c } : null));
             selectedCards = bestDeck.map(c => ({ ...c }));
             renderAllCardSlots();
             saveDeckToLocalStorage();
