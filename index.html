@@ -127,10 +127,11 @@
                         </div>
                     </div>
                     <div id="support-cards-content" class="collapsible-content space-y-2">
-                        <div id="support-card-slots"></div>
-                    </div>
-                </div>
-                 <div class="bg-white p-4 rounded-xl shadow-md">
+                      <div id="support-card-slots"></div>
+                      <button id="optimize-deck-button" class="w-full p-2 mt-2 border-2 border-dashed rounded-lg text-purple-600 hover:bg-purple-50 hover:border-purple-600">Optimize Deck</button>
+                      </div>
+                  </div>
+                   <div class="bg-white p-4 rounded-xl shadow-md">
                     <div id="toggle-target-stats" class="flex justify-between items-center cursor-pointer border-b pb-2 mb-3">
                         <h2 class="text-xl font-bold text-gray-900">Target Stats</h2>
                         <svg class="collapse-icon h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -371,6 +372,7 @@
         const logDisplay = document.getElementById('log-display');
         const trainingActionsContainer = document.getElementById('training-actions');
         const supportCardSlotsContainer = document.getElementById('support-card-slots');
+        const optimizeDeckButton = document.getElementById('optimize-deck-button');
         const targetStatsInputsContainer = document.getElementById('target-stats-inputs');
         const statsContainer = document.getElementById('stats-container');
         const aiNextDayButton = document.getElementById('ai-next-day');
@@ -941,6 +943,20 @@
         
         function enableAllButtons() { setButtonsState(true); }
         function disableAllButtons() { setButtonsState(false); }
+
+        function lockSelectedCardSlots() {
+            document.querySelectorAll('.card-slot-rendered').forEach(slot => {
+                slot.classList.add('opacity-50');
+                slot.querySelectorAll('select, button').forEach(el => el.disabled = true);
+            });
+        }
+
+        function unlockSelectedCardSlots() {
+            document.querySelectorAll('.card-slot-rendered').forEach(slot => {
+                slot.classList.remove('opacity-50');
+                slot.querySelectorAll('select, button').forEach(el => el.disabled = false);
+            });
+        }
 
         function placeSupportCards(gs) {
             gs.supportCards.forEach(card => {
@@ -1596,6 +1612,97 @@
         }
 
 
+        // --- Deck Optimization Functions ---
+        async function handleDeckOptimize() {
+            if (isSimulating) return;
+            disableAllButtons();
+            lockSelectedCardSlots();
+            isSimulating = true;
+            progressContainer.classList.remove('hidden');
+
+            const lockedIndices = selectedCards.map((c, i) => c ? i : -1).filter(i => i !== -1);
+
+            const cardPool = ALL_CARDS_DATA.filter(c => {
+                const rarityStr = RARITY_MAP[c.rarity];
+                const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
+                return allowedLBs.includes(c.limit_break);
+            });
+
+            const { deck } = await runDeckOptimization(cardPool, 200, 30, lockedIndices);
+            selectedCards = deck.map(c => ({ ...c }));
+            renderAllCardSlots();
+            saveDeckToLocalStorage();
+
+            progressContainer.classList.add('hidden');
+            isSimulating = false;
+            enableAllButtons();
+            unlockSelectedCardSlots();
+            init();
+        }
+
+        async function runDeckOptimization(cardPool, iterations = 200, evalRuns = 30, lockedIndices = []) {
+            const lockedSet = new Set(lockedIndices);
+            const lockedDeck = selectedCards.map(c => (c ? { ...c } : null));
+
+            function randomDeck() {
+                const available = [...cardPool];
+                const deck = lockedDeck.map(c => (c ? { ...c } : null));
+                const used = new Set(deck.filter(Boolean).map(c => c.char_name));
+                for (let i = available.length - 1; i >= 0; i--) {
+                    if (used.has(available[i].char_name)) available.splice(i, 1);
+                }
+                for (let i = 0; i < 6; i++) {
+                    if (!deck[i]) {
+                        const idx = Math.floor(Math.random() * available.length);
+                        const card = available.splice(idx, 1)[0];
+                        deck[i] = card;
+                        for (let j = available.length - 1; j >= 0; j--) {
+                            if (available[j].char_name === card.char_name) available.splice(j, 1);
+                        }
+                    }
+                }
+                return deck;
+            }
+
+            async function evaluateDeck(deck) {
+                const backup = [...selectedCards];
+                selectedCards = deck.map(c => ({ ...c }));
+                const score = await runGoalSeekAnalysis(evalRuns);
+                selectedCards = backup;
+                return score;
+            }
+
+            let currentDeck = randomDeck();
+            let currentScore = await evaluateDeck(currentDeck);
+            let bestDeck = { deck: [...currentDeck], score: currentScore };
+            let temperature = 1.0;
+
+            const availableSlots = [...Array(6).keys()].filter(i => !lockedSet.has(i));
+
+            for (let i = 0; i < iterations; i++) {
+                if (availableSlots.length === 0) break;
+                const slot = availableSlots[Math.floor(Math.random() * availableSlots.length)];
+                const candidate = cardPool[Math.floor(Math.random() * cardPool.length)];
+                if (currentDeck.some(c => c.char_name === candidate.char_name)) { i--; continue; }
+                const newDeck = [...currentDeck];
+                newDeck[slot] = candidate;
+                const newScore = await evaluateDeck(newDeck);
+                if (newScore > currentScore || Math.random() < Math.exp((newScore - currentScore) / temperature)) {
+                    currentDeck = newDeck;
+                    currentScore = newScore;
+                    if (newScore > bestDeck.score) {
+                        bestDeck = { deck: [...newDeck], score: newScore };
+                    }
+                }
+                temperature *= 0.995;
+                progressText.textContent = `Optimizing deck ${i + 1}/${iterations}`;
+                progressBar.style.width = `${((i + 1) / iterations) * 100}%`;
+                await new Promise(r => setTimeout(r, 0));
+            }
+            return bestDeck;
+        }
+
+
         // --- Tooltip Functions ---
         function showTooltip(e, card) {
             const statBonusString = STAT_MAP
@@ -1732,6 +1839,7 @@
         aiNextDayButton.addEventListener('click', runSingleAITurn);
         aiRunAllButton.addEventListener('click', runFullSimulation);
         aiRunMultiButton.addEventListener('click', handleMultiSim);
+        optimizeDeckButton.addEventListener('click', handleDeckOptimize);
         goalSeekCloseButton.addEventListener('click', () => {
             goalSeekModal.classList.add('hidden');
             goalSeekModal.classList.remove('flex');
