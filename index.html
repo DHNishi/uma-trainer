@@ -128,6 +128,9 @@
                     </div>
                     <div id="support-cards-content" class="collapsible-content space-y-2">
                         <div id="support-card-slots"></div>
+                        <div class="mt-2">
+                            <button id="deck-optimize-btn" class="w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Optimize Deck</button>
+                        </div>
                     </div>
                 </div>
                  <div class="bg-white p-4 rounded-xl shadow-md">
@@ -371,6 +374,7 @@
         const logDisplay = document.getElementById('log-display');
         const trainingActionsContainer = document.getElementById('training-actions');
         const supportCardSlotsContainer = document.getElementById('support-card-slots');
+        const deckOptimizeButton = document.getElementById('deck-optimize-btn');
         const targetStatsInputsContainer = document.getElementById('target-stats-inputs');
         const statsContainer = document.getElementById('stats-container');
         const aiNextDayButton = document.getElementById('ai-next-day');
@@ -1555,17 +1559,102 @@
             const targetStats = getTargetStatsFromUI();
             const bondWeights = getBondWeightsFromUI();
             let totalWeightedSum = 0;
+            const statsForCalc = currentSettings.dynamicGutsValuation ? STAT_MAP.filter(s => s !== 'guts') : STAT_MAP;
+            const distance = currentSettings.targetDistance;
+            const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, targetStats.values.guts || 0) : 0;
+            const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
             for (let i = 0; i < numRuns; i++) {
                 const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows);
-                const weightedTotal = STAT_MAP.reduce((sum, stat) => {
-                    const statValue = result[stat];
-                    const targetValue = targetStats.values[stat];
+                const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, result.guts) : 0;
+                const weightedTotal = statsForCalc.reduce((sum, stat) => {
+                    let statValue = result[stat];
+                    let targetValue = targetStats.values[stat];
+                    if (currentSettings.dynamicGutsValuation && stat === 'stamina') {
+                        statValue += currentGutsOffset;
+                        targetValue = targetEffectiveStamina;
+                    }
                     const priority = targetStats.priorities[stat];
                     return sum + Math.min(statValue, targetValue) * priority;
                 }, 0);
                 totalWeightedSum += weightedTotal;
             }
             return totalWeightedSum / numRuns;
+        }
+
+        async function evaluateDeck(deck, numRuns) {
+            const original = selectedCards.slice();
+            selectedCards = deck.map(c => ({ ...c }));
+            const score = await runGoalSeekAnalysis(numRuns);
+            selectedCards = original;
+            return score;
+        }
+
+        async function optimizeDeck(cardPool, iterations = 200, runsPerEval = 30) {
+            function getRandomDeck() {
+                const deck = [];
+                const used = new Set();
+                while (deck.length < 6) {
+                    const card = cardPool[Math.floor(Math.random() * cardPool.length)];
+                    if (!used.has(card.char_name)) {
+                        deck.push({ ...card });
+                        used.add(card.char_name);
+                    }
+                }
+                return deck;
+            }
+
+            let currentDeck = getRandomDeck();
+            let currentScore = await evaluateDeck(currentDeck, runsPerEval);
+            let bestDeck = currentDeck.slice();
+            let bestScore = currentScore;
+
+            for (let i = 0; i < iterations; i++) {
+                const temp = 1 - i / iterations;
+                const newDeck = currentDeck.map(c => ({ ...c }));
+                const replaceIndex = Math.floor(Math.random() * 6);
+                const usedNames = new Set(newDeck.map(c => c.char_name));
+                usedNames.delete(newDeck[replaceIndex].char_name);
+                let newCard;
+                do {
+                    newCard = cardPool[Math.floor(Math.random() * cardPool.length)];
+                } while (usedNames.has(newCard.char_name));
+                newDeck[replaceIndex] = { ...newCard };
+                const newScore = await evaluateDeck(newDeck, runsPerEval);
+                if (newScore > currentScore || Math.random() < Math.exp((newScore - currentScore) / Math.max(temp, 0.01))) {
+                    currentDeck = newDeck;
+                    currentScore = newScore;
+                }
+                if (newScore > bestScore) {
+                    bestDeck = newDeck.slice();
+                    bestScore = newScore;
+                }
+                progressText.textContent = `Optimizing ${i + 1}/${iterations} - Best: ${bestScore.toFixed(1)}`;
+                progressBar.style.width = `${((i + 1) / iterations) * 100}%`;
+                await new Promise(r => setTimeout(r, 0));
+            }
+            return bestDeck;
+        }
+
+        async function handleDeckOptimization() {
+            if (isSimulating) return;
+            disableAllButtons();
+            isSimulating = true;
+            progressContainer.classList.remove('hidden');
+
+            const cardPool = ALL_CARDS_DATA.filter(c => {
+                const rarityStr = RARITY_MAP[c.rarity];
+                const allowedLBs = currentSettings.goalSeekLBs[rarityStr] || [];
+                return allowedLBs.includes(c.limit_break);
+            });
+
+            const bestDeck = await optimizeDeck(cardPool);
+            selectedCards = bestDeck.map(c => ({ ...c }));
+            renderAllCardSlots();
+            saveDeckToLocalStorage();
+
+            progressContainer.classList.add('hidden');
+            isSimulating = false;
+            enableAllButtons();
         }
 
         function displayGoalSeekResults(results) {
@@ -1732,6 +1821,7 @@
         aiNextDayButton.addEventListener('click', runSingleAITurn);
         aiRunAllButton.addEventListener('click', runFullSimulation);
         aiRunMultiButton.addEventListener('click', handleMultiSim);
+        deckOptimizeButton.addEventListener('click', handleDeckOptimization);
         goalSeekCloseButton.addEventListener('click', () => {
             goalSeekModal.classList.add('hidden');
             goalSeekModal.classList.remove('flex');
