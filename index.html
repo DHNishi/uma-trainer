@@ -1280,6 +1280,23 @@
             }
         }
 
+        function calculateUpcomingBonuses(gs) {
+            const totalRaceBonusPercent = gs.supportCards.reduce((sum, card) => sum + (card ? card.race_bonus : 0), 0) / 100;
+            const smallRacePoints = 9 * Math.floor(3 * (1 + totalRaceBonusPercent));
+            const largeRacePoints = 3 * Math.floor(10 * (1 + totalRaceBonusPercent));
+            const raceBonusPerStat = smallRacePoints + largeRacePoints;
+            const directorBonus = 15;
+            let reporterBonus = 0;
+            if (gs.reporter) {
+                if (gs.reporter.bond >= 100) {
+                    reporterBonus = 5;
+                } else if (gs.reporter.bond >= 60) {
+                    reporterBonus = 3;
+                }
+            }
+            return raceBonusPerStat + directorBonus + reporterBonus;
+        }
+
         function gameOver() {
             applyEndOfRunBonuses(gameState);
             logEvent('Training complete! Final stats achieved.', 'system');
@@ -1390,10 +1407,11 @@
                     return a.priority - b.priority;
                 });
                 if (scoredTrainings.length > 0 && scoredTrainings[0].bondGain > 0) { bestAction = scoredTrainings[0].type; }
-            } 
+            }
             if (!bestAction) {
+                const futureBonus = calculateUpcomingBonuses(gs);
                 const distance = currentSettings.targetDistance;
-                const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, gs.stats.guts) : 0;
+                const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, gs.stats.guts + futureBonus) : 0;
                 const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, targetStats.values.guts || 0) : 0;
                 const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
                 const scoredTrainings = availableTrainings.map(t => {
@@ -1416,10 +1434,12 @@
                             targetStatValue = targetEffectiveStamina;
                         }
 
-                        if (currentStatValue >= 1200) continue;
-                        const usefulGain = Math.min(gain, 1200 - currentStatValue);
+                        let effectiveCurrent = currentStatValue + futureBonus;
+                        if (effectiveCurrent >= 1200) continue;
+                        let usefulGain = Math.min(gain, 1200 - effectiveCurrent);
 
-                        if (currentStatValue < targetStatValue) {
+                        if (effectiveCurrent < targetStatValue) {
+                            usefulGain = Math.min(usefulGain, targetStatValue - effectiveCurrent);
                             score += usefulGain * priority;
                         }
                     }
