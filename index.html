@@ -992,9 +992,12 @@
             
             const gains = calculatePotentialGains(gs, type, presentCards);
             let gainStrings = [];
+            const appliedGains = {};
             for (const stat in gains) {
-                gs.stats[stat] += gains[stat];
-                gainStrings.push(`+${Math.floor(gains[stat])} ${stat}`);
+                const applied = Math.min(100, gains[stat]);
+                gs.stats[stat] += applied;
+                appliedGains[stat] = applied;
+                gainStrings.push(`+${Math.floor(applied)} ${stat}`);
             }
             if (!isSilent) logEvent(`Trained ${type}. Gains: ${gainStrings.join(', ') || 'None'}.`, 'train');
 
@@ -1006,8 +1009,10 @@
                 } else {
                     if (Math.random() < 0.40) {
                         const boost = friendCard.stat_boost || {type: friendCard.name === "Aoi Kiryuin" ? 'wit' : 'speed', amount: 3};
-                        gs.stats[boost.type] += boost.amount;
-                        if (!isSilent) logEvent(`${friendCard.name} provided a stat boost! +${boost.amount} ${boost.type}.`, 'event');
+                        const remainingCap = 100 - (appliedGains[boost.type] || 0);
+                        const appliedBoost = Math.min(remainingCap, boost.amount);
+                        gs.stats[boost.type] += appliedBoost;
+                        if (!isSilent) logEvent(`${friendCard.name} provided a stat boost! +${appliedBoost} ${boost.type}.`, 'event');
                     }
                     if (Math.random() < 0.08) {
                         gs.mood = Math.min(2, gs.mood + 1);
@@ -1235,7 +1240,8 @@
             const finalGains = {};
             for (const stat in tempGains) {
                 const characterBonusMultiplier = 1 + gs.characterBonuses[stat];
-                finalGains[stat] = tempGains[stat] * moodMultiplier * trainingEffectivenessMultiplier * friendshipMultiplier * characterBonusMultiplier;
+                const calculatedGain = tempGains[stat] * moodMultiplier * trainingEffectivenessMultiplier * friendshipMultiplier * characterBonusMultiplier;
+                finalGains[stat] = Math.min(100, calculatedGain);
             }
             return finalGains;
         }
