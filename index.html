@@ -944,6 +944,20 @@
         function enableAllButtons() { setButtonsState(true); }
         function disableAllButtons() { setButtonsState(false); }
 
+        function lockSelectedCardSlots() {
+            document.querySelectorAll('.card-slot-rendered').forEach(slot => {
+                slot.classList.add('opacity-50');
+                slot.querySelectorAll('select, button').forEach(el => el.disabled = true);
+            });
+        }
+
+        function unlockSelectedCardSlots() {
+            document.querySelectorAll('.card-slot-rendered').forEach(slot => {
+                slot.classList.remove('opacity-50');
+                slot.querySelectorAll('select, button').forEach(el => el.disabled = false);
+            });
+        }
+
         function placeSupportCards(gs) {
             gs.supportCards.forEach(card => {
                 if(!card) return;
@@ -1602,8 +1616,11 @@
         async function handleDeckOptimize() {
             if (isSimulating) return;
             disableAllButtons();
+            lockSelectedCardSlots();
             isSimulating = true;
             progressContainer.classList.remove('hidden');
+
+            const lockedIndices = selectedCards.map((c, i) => c ? i : -1).filter(i => i !== -1);
 
             const cardPool = ALL_CARDS_DATA.filter(c => {
                 const rarityStr = RARITY_MAP[c.rarity];
@@ -1611,7 +1628,7 @@
                 return allowedLBs.includes(c.limit_break);
             });
 
-            const { deck } = await runDeckOptimization(cardPool, 200, 30);
+            const { deck } = await runDeckOptimization(cardPool, 200, 30, lockedIndices);
             selectedCards = deck.map(c => ({ ...c }));
             renderAllCardSlots();
             saveDeckToLocalStorage();
@@ -1619,22 +1636,29 @@
             progressContainer.classList.add('hidden');
             isSimulating = false;
             enableAllButtons();
+            unlockSelectedCardSlots();
             init();
         }
 
-        async function runDeckOptimization(cardPool, iterations = 200, evalRuns = 30) {
+        async function runDeckOptimization(cardPool, iterations = 200, evalRuns = 30, lockedIndices = []) {
+            const lockedSet = new Set(lockedIndices);
+            const lockedDeck = selectedCards.map(c => (c ? { ...c } : null));
+
             function randomDeck() {
                 const available = [...cardPool];
-                const deck = [];
-                const used = new Set();
-                while (deck.length < 6 && available.length > 0) {
-                    const idx = Math.floor(Math.random() * available.length);
-                    const card = available.splice(idx, 1)[0];
-                    if (used.has(card.char_name)) continue;
-                    deck.push(card);
-                    used.add(card.char_name);
-                    for (let i = available.length - 1; i >= 0; i--) {
-                        if (used.has(available[i].char_name)) available.splice(i, 1);
+                const deck = lockedDeck.map(c => (c ? { ...c } : null));
+                const used = new Set(deck.filter(Boolean).map(c => c.char_name));
+                for (let i = available.length - 1; i >= 0; i--) {
+                    if (used.has(available[i].char_name)) available.splice(i, 1);
+                }
+                for (let i = 0; i < 6; i++) {
+                    if (!deck[i]) {
+                        const idx = Math.floor(Math.random() * available.length);
+                        const card = available.splice(idx, 1)[0];
+                        deck[i] = card;
+                        for (let j = available.length - 1; j >= 0; j--) {
+                            if (available[j].char_name === card.char_name) available.splice(j, 1);
+                        }
                     }
                 }
                 return deck;
@@ -1653,8 +1677,11 @@
             let bestDeck = { deck: [...currentDeck], score: currentScore };
             let temperature = 1.0;
 
+            const availableSlots = [...Array(6).keys()].filter(i => !lockedSet.has(i));
+
             for (let i = 0; i < iterations; i++) {
-                const slot = Math.floor(Math.random() * 6);
+                if (availableSlots.length === 0) break;
+                const slot = availableSlots[Math.floor(Math.random() * availableSlots.length)];
                 const candidate = cardPool[Math.floor(Math.random() * cardPool.length)];
                 if (currentDeck.some(c => c.char_name === candidate.char_name)) { i--; continue; }
                 const newDeck = [...currentDeck];
