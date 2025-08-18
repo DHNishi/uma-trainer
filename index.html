@@ -1494,7 +1494,15 @@
 
         function displayStatResults(results) {
             const analysis = {};
-            const statsToAnalyze = [...STAT_MAP, 'total'];
+
+            const distance = currentSettings.targetDistance;
+            const baselineGuts = gutsToStamina(distance, 400);
+            results.forEach(r => {
+                const gutsOffset = gutsToStamina(distance, r.guts) - baselineGuts;
+                r.effectiveStamina = Math.floor(r.stamina + gutsOffset);
+            });
+
+            const statsToAnalyze = [...STAT_MAP, 'effectiveStamina', 'total'];
             statsToAnalyze.forEach(stat => {
                 const values = results.map(r => r[stat]).sort((a, b) => a - b);
                 const sum = values.reduce((acc, v) => acc + v, 0);
@@ -1511,12 +1519,24 @@
                     std: Math.floor(stdDev)
                 };
             });
-            
-            let tableHTML = STAT_MAP.map(stat => {
+
+            const statsForTable = [...STAT_MAP, 'effectiveStamina'];
+            let tableHTML = statsForTable.map(stat => {
+                const statLabel = stat === 'effectiveStamina' ? 'Effective Stamina' : stat;
+                if (stat === 'effectiveStamina') {
+                    return `<tr>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${statLabel}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].min}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].mean}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].std}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].max}</td>
+                        <td class="px-4 py-2"></td>
+                    </tr>`;
+                }
                 const metTargetRuns = results.filter(r => r.metTargets[stat]).length;
                 const metTargetPercentage = (metTargetRuns / results.length) * 100;
                 return `<tr>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">${stat}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">${statLabel}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].min}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].mean}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${analysis[stat].std}</td>
@@ -1526,7 +1546,7 @@
             }).join('');
 
             const totalStat = analysis['total'];
-             tableHTML += `<tr class="bg-gray-50">
+            tableHTML += `<tr class="bg-gray-50">
                 <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-gray-900">Total</td>
                 <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.min}</td>
                 <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.mean}</td>
