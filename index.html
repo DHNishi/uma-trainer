@@ -203,6 +203,7 @@
                             <input type="number" id="run-count" value="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
                         </div>
                         <button id="ai-run-multi" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Run Analysis</button>
+                        <button id="optimize-weights" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition">Optimize Weights</button>
                         <div id="multi-sim-progress-container" class="hidden mt-2">
                             <div class="text-sm font-medium text-gray-600 mb-1" id="multi-sim-progress-text"></div>
                             <div class="w-full bg-gray-200 rounded-full h-2.5"><div id="multi-sim-progress-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div></div>
@@ -401,6 +402,7 @@
         const recreateButton = document.getElementById('action-recreate');
         const runCountInput = document.getElementById('run-count');
         const aiRunMultiButton = document.getElementById('ai-run-multi');
+        const optimizeWeightsButton = document.getElementById('optimize-weights');
         const resultsContainer = document.getElementById('results-container');
         const resultsBody = document.getElementById('results-body');
         const progressContainer = document.getElementById('multi-sim-progress-container');
@@ -986,7 +988,7 @@
 
         function setButtonsState(enabled) {
             isSimulating = !enabled;
-            [aiNextDayButton, aiRunAllButton, restButton, recreateButton, aiRunMultiButton].forEach(b => b.disabled = !enabled);
+            [aiNextDayButton, aiRunAllButton, restButton, recreateButton, aiRunMultiButton, optimizeWeightsButton].forEach(b => b.disabled = !enabled);
             document.querySelectorAll('.goal-seek-btn').forEach(btn => btn.disabled = !enabled);
             updateTrainingActionsUI();
         }
@@ -1650,6 +1652,91 @@
             resultsContainer.classList.remove('hidden');
         }
 
+        function computeMeanStats(results, stats = STAT_MAP) {
+            const means = {};
+            stats.forEach(stat => {
+                const sum = results.reduce((acc, r) => acc + r[stat], 0);
+                means[stat] = sum / results.length;
+            });
+            return means;
+        }
+
+        function sumStats(means, stats = STAT_MAP) {
+            return stats.reduce((acc, stat) => acc + means[stat], 0);
+        }
+
+        async function optimizeTargetWeights() {
+            if (isSimulating) return;
+            disableAllButtons();
+            isSimulating = true;
+            const bondWeights = getBondWeightsFromUI();
+            const originalTargets = getTargetStatsFromUI();
+            const runs = Math.min(30, parseInt(runCountInput.value) || 100);
+            const distance = currentSettings.targetDistance;
+            const baselineGuts = gutsToStamina(distance, 400);
+            const statsForCalc = currentSettings.dynamicGutsValuation
+                ? ['speed', 'power', 'wit', 'effectiveStamina']
+                : STAT_MAP;
+
+            const baselineResults = [];
+            for (let i = 0; i < runs; i++) {
+                const res = runSilentSimulation(originalTargets, bondWeights, currentSettings.delayForRainbows);
+                if (currentSettings.dynamicGutsValuation) {
+                    const gutsOffset = gutsToStamina(distance, res.guts) - baselineGuts;
+                    res.effectiveStamina = res.stamina + gutsOffset;
+                }
+                baselineResults.push(res);
+            }
+            const baselineMeans = computeMeanStats(baselineResults, statsForCalc);
+
+            const weightOptions = [0.5, 1, 1.5];
+            const tolerance = 0.02;
+            let best = null;
+
+            for (const wSpeed of weightOptions) {
+                for (const wStamina of weightOptions) {
+                    for (const wPower of weightOptions) {
+                        for (const wGuts of weightOptions) {
+                            for (const wWit of weightOptions) {
+                                const candidate = JSON.parse(JSON.stringify(originalTargets));
+                                candidate.priorities = { speed: wSpeed, stamina: wStamina, power: wPower, guts: wGuts, wit: wWit };
+                                const simResults = [];
+                                for (let i = 0; i < runs; i++) {
+                                    const res = runSilentSimulation(candidate, bondWeights, currentSettings.delayForRainbows);
+                                    if (currentSettings.dynamicGutsValuation) {
+                                        const gutsOffset = gutsToStamina(distance, res.guts) - baselineGuts;
+                                        res.effectiveStamina = res.stamina + gutsOffset;
+                                    }
+                                    simResults.push(res);
+                                }
+                                const means = computeMeanStats(simResults, statsForCalc);
+                                const nearPareto = statsForCalc.every(stat => means[stat] >= baselineMeans[stat] * (1 - tolerance));
+                                const better = statsForCalc.some(stat => means[stat] > baselineMeans[stat]);
+                                if (nearPareto && better) {
+                                    if (!best || sumStats(means, statsForCalc) > sumStats(best.means, statsForCalc)) {
+                                        best = { weights: { ...candidate.priorities }, means };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (best) {
+                STAT_MAP.forEach(stat => {
+                    const select = document.getElementById(`priority-${stat}`);
+                    if (select) select.value = best.weights[stat];
+                });
+                alert(`Applied optimized weights: ${STAT_MAP.map(s => `${s}: ${best.weights[s]}`).join(', ')}`);
+            } else {
+                alert('No near pareto improvements found.');
+            }
+
+            enableAllButtons();
+            isSimulating = false;
+        }
+
         // --- Goal Seek Functions ---
         async function handleGoalSeek(slotIndex) {
             if (isSimulating) return;
@@ -1976,6 +2063,7 @@
         aiNextDayButton.addEventListener('click', runSingleAITurn);
         aiRunAllButton.addEventListener('click', runFullSimulation);
         aiRunMultiButton.addEventListener('click', handleMultiSim);
+        optimizeWeightsButton.addEventListener('click', optimizeTargetWeights);
         deckOptimizeButton.addEventListener('click', handleDeckOptimization);
         goalSeekCloseButton.addEventListener('click', () => {
             goalSeekModal.classList.add('hidden');
