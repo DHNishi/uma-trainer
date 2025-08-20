@@ -137,6 +137,10 @@
                             <label for="run-count" class="block text-sm font-medium text-gray-700">Number of Simulations</label>
                             <input type="number" id="run-count" value="2500" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
                         </div>
+                        <div>
+                            <label for="analysis-start-turn" class="block text-sm font-medium text-gray-700">Analyze from Turn</label>
+                            <input type="number" id="analysis-start-turn" value="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                        </div>
                         <button id="ai-run-multi" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Run Analysis</button>
                         <button id="deck-optimize-btn" class="w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Optimize Deck</button>
                         <div id="multi-sim-progress-container" class="hidden mt-2">
@@ -151,6 +155,7 @@
                         <thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stat</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Std Dev</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Met Target %</th></tr></thead>
                         <tbody id="results-body" class="bg-white divide-y divide-gray-200"></tbody>
                     </table>
+                    <div id="action-analysis" class="mt-4"></div>
                 </div>
                 <div class="bg-white p-4 rounded-xl shadow-md">
                     <div id="toggle-target-stats" class="flex justify-between items-center cursor-pointer border-b pb-2 mb-3">
@@ -398,9 +403,11 @@
         const restButton = document.getElementById('action-rest');
         const recreateButton = document.getElementById('action-recreate');
         const runCountInput = document.getElementById('run-count');
+        const analysisStartTurnInput = document.getElementById('analysis-start-turn');
         const aiRunMultiButton = document.getElementById('ai-run-multi');
         const resultsContainer = document.getElementById('results-container');
         const resultsBody = document.getElementById('results-body');
+        const actionAnalysis = document.getElementById('action-analysis');
         const progressContainer = document.getElementById('multi-sim-progress-container');
         const progressBar = document.getElementById('multi-sim-progress-bar');
         const progressText = document.getElementById('multi-sim-progress-text');
@@ -1104,6 +1111,7 @@
                         const remainingCap = 100 - (appliedGains[boost.type] || 0);
                         const appliedBoost = Math.min(remainingCap, boost.amount);
                         gs.stats[boost.type] += appliedBoost;
+                        appliedGains[boost.type] = (appliedGains[boost.type] || 0) + appliedBoost;
                         if (!isSilent) logEvent(`${friendCard.name} provided a stat boost! +${appliedBoost} ${boost.type}.`, 'event');
                     }
                     if (Math.random() < 0.08) {
@@ -1127,7 +1135,13 @@
                     if (!isSilent) logEvent(`${card.name} provided wisdom recovery! Gained ${card.wisdom_recovery} energy.`, 'event');
                 }
             });
-            
+
+            if (gs.actionCounts && gs.day >= (gs.analysisStartTurn || 1)) {
+                gs.actionCounts[type] = (gs.actionCounts[type] || 0) + 1;
+                const totalGain = Object.values(appliedGains).reduce((acc, v) => acc + v, 0);
+                gs.trainingGains[type] = (gs.trainingGains[type] || 0) + totalGain;
+            }
+
             if (!summer) {
                 facility.uses++;
                 if (facility.uses >= 5 && facility.level < 5) {
@@ -1159,6 +1173,9 @@
             }
             gs.energy = Math.min(100, gs.energy + energyGained);
             if (!isSilent) logEvent(message, 'rest');
+            if (gs.actionCounts && gs.day >= (gs.analysisStartTurn || 1)) {
+                gs.actionCounts.Rest = (gs.actionCounts.Rest || 0) + 1;
+            }
             advanceDay(gs, isSilent);
         }
 
@@ -1183,6 +1200,9 @@
             else if (roll < 0.95) { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 20); message = 'Visited the shrine, feeling refreshed! Mood improved, gained 20 energy.'; } 
             else { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 30); message = 'A great blessing at the shrine! Mood improved, gained 30 energy.'; }
             if (!isSilent) logEvent(message, 'recreate');
+            if (gs.actionCounts && gs.day >= (gs.analysisStartTurn || 1)) {
+                gs.actionCounts.Recreate = (gs.actionCounts.Recreate || 0) + 1;
+            }
             advanceDay(gs, isSilent);
         }
 
@@ -1372,6 +1392,20 @@
                 applyInitialCardStats(gs);
             }
             if (gs.day > 65) return;
+
+            const allBondedNow = gs.supportCards.every(c => !c || c.type === 6 || c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
+            if (!gs.bondsMaxed && allBondedNow) gs.bondsMaxed = true;
+            if (gs.bondsMaxed && gs.friendTrainingsAfterBond && gs.day >= (gs.analysisStartTurn || 1)) {
+                let friendTrainingCount = 0;
+                TRAINING_TYPES.forEach(type => {
+                    if (gs.supportCards.some(c => c && c.type !== 6 && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD)) {
+                        friendTrainingCount++;
+                    }
+                });
+                gs.friendTrainingsAfterBond.total += friendTrainingCount;
+                gs.friendTrainingsAfterBond.turns++;
+            }
+
             if (gs.mood < 2 && !(gs.energy >= 100 && gs.mood > 0)) { handleRecreate(gs, isSilent); return; }
             if (gs.energy <= 40) { handleRest(gs, isSilent); return; }
 
@@ -1553,8 +1587,12 @@
             simulationStep();
         }
 
-        function runSilentSimulation(targetStats, bondWeights, delayForRainbows) {
+        function runSilentSimulation(targetStats, bondWeights, delayForRainbows, startTurn = 1) {
             const localGS = init(true);
+            localGS.actionCounts = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0, Rest: 0, Recreate: 0 };
+            localGS.trainingGains = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
+            localGS.friendTrainingsAfterBond = { total: 0, turns: 0 };
+            localGS.analysisStartTurn = startTurn;
             applyInitialCardStats(localGS);
             placeSupportCards(localGS);
             placeReporter(localGS);
@@ -1563,13 +1601,18 @@
             }
             applyEndOfRunBonuses(localGS);
             localGS.stats.total = STAT_MAP.reduce((sum, stat) => sum + localGS.stats[stat], 0);
-            
+
             localGS.stats.metTargets = {};
             STAT_MAP.forEach(stat => {
                 localGS.stats.metTargets[stat] = localGS.stats[stat] >= targetStats.values[stat];
             });
-            
-            return localGS.stats;
+
+            return {
+                ...localGS.stats,
+                actionCounts: localGS.actionCounts,
+                trainingGains: localGS.trainingGains,
+                friendTraining: localGS.friendTrainingsAfterBond
+            };
         }
 
         async function handleMultiSim() {
@@ -1579,11 +1622,12 @@
             resultsContainer.classList.add('hidden');
             progressContainer.classList.remove('hidden');
             const numRuns = parseInt(runCountInput.value) || 2500;
+            const startTurn = parseInt(analysisStartTurnInput.value) || 1;
             const targetStats = getTargetStatsFromUI();
             const bondWeights = getBondWeightsFromUI();
             const allResults = [];
             for (let i = 0; i < numRuns; i++) {
-                allResults.push(runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows));
+                allResults.push(runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows, startTurn));
                 if (i % 10 === 0 || i === numRuns - 1) {
                     const progressPercentage = ((i + 1) / numRuns) * 100;
                     progressBar.style.width = `${progressPercentage}%`;
@@ -1672,6 +1716,40 @@
             </tr>`;
 
             resultsBody.innerHTML = tableHTML;
+
+            const actionTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0, Rest: 0, Recreate: 0 };
+            const trainingGainTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
+            let friendTrainTotal = 0, friendTrainTurns = 0;
+            results.forEach(r => {
+                if (r.actionCounts) {
+                    for (const key in actionTotals) {
+                        actionTotals[key] += r.actionCounts[key] || 0;
+                    }
+                }
+                if (r.trainingGains) {
+                    for (const key in trainingGainTotals) {
+                        trainingGainTotals[key] += r.trainingGains[key] || 0;
+                    }
+                }
+                if (r.friendTraining) {
+                    friendTrainTotal += r.friendTraining.total;
+                    friendTrainTurns += r.friendTraining.turns;
+                }
+            });
+
+            let actionRows = '';
+            TRAINING_TYPES.forEach(type => {
+                const avgCount = actionTotals[type] / results.length;
+                const avgGain = actionTotals[type] ? (trainingGainTotals[type] / actionTotals[type]) : 0;
+                actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${type}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgGain.toFixed(2)}</td></tr>`;
+            });
+            ['Rest','Recreate'].forEach(act => {
+                const avgCount = actionTotals[act] / results.length;
+                actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${act}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td></tr>`;
+            });
+            const friendAvg = friendTrainTurns ? (friendTrainTotal / friendTrainTurns) : 0;
+            actionAnalysis.innerHTML = `<h3 class=\"text-lg font-medium text-gray-900 mb-2\">Action Summary</h3><table class=\"min-w-full divide-y divide-gray-200\"><thead class=\"bg-gray-50\"><tr><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Action</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Count</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Stat Gain</th></tr></thead><tbody class=\"bg-white divide-y divide-gray-200\">${actionRows}</tbody></table><div class=\"mt-2 text-sm text-gray-700\">Avg friendship trainings per turn after bonds maxed: ${friendAvg.toFixed(2)}</div>`;
+
             resultsContainer.classList.remove('hidden');
             previousAnalysis = JSON.parse(JSON.stringify(analysis));
         }
@@ -1728,6 +1806,7 @@
         async function runGoalSeekAnalysis(numRuns) {
             const targetStats = getTargetStatsFromUI();
             const bondWeights = getBondWeightsFromUI();
+            const startTurn = parseInt(analysisStartTurnInput.value) || 1;
             let totalWeightedSum = 0;
             const statsForCalc = currentSettings.dynamicGutsValuation ? STAT_MAP.filter(s => s !== 'guts') : STAT_MAP;
             const distance = currentSettings.targetDistance;
@@ -1737,7 +1816,7 @@
                 : 0;
             const targetEffectiveStamina = targetStats.values.stamina;
             for (let i = 0; i < numRuns; i++) {
-                const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows);
+                const result = runSilentSimulation(targetStats, bondWeights, currentSettings.delayForRainbows, startTurn);
                 const currentGutsOffset = currentSettings.dynamicGutsValuation
                     ? gutsToStamina(distance, Math.max(result.guts, baselineGuts))
                     : 0;
