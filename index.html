@@ -1137,7 +1137,8 @@
             });
 
             if (gs.turnLog) {
-                const primaryGain = appliedGains[type] || 0;
+                const primaryStat = STAT_MAP[TRAINING_TYPES.indexOf(type)];
+                const primaryGain = appliedGains[primaryStat] || 0;
                 const totalGain = Object.values(appliedGains).reduce((acc, v) => acc + v, 0);
                 const secondaryGain = totalGain - primaryGain;
                 gs.turnLog.push({ day: gs.day, action: type, primaryGain, secondaryGain, friendCounts: gs.friendCountsThisTurn });
