@@ -147,10 +147,15 @@
                 </div>
                 <div id="results-container" class="bg-white p-4 rounded-xl shadow-md hidden">
                     <h2 class="text-xl font-bold mb-3 text-gray-900 border-b pb-2">Analysis Results</h2>
+                    <div class="mb-2 flex items-center space-x-2">
+                        <label for="analysis-turn-select" class="text-sm font-medium text-gray-700">Show data from turn</label>
+                        <select id="analysis-turn-select" class="mt-1 block rounded-md border-gray-300 shadow-sm p-1 text-sm"></select>
+                    </div>
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stat</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Std Dev</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max</th><th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Met Target %</th></tr></thead>
                         <tbody id="results-body" class="bg-white divide-y divide-gray-200"></tbody>
                     </table>
+                    <div id="action-analysis" class="mt-4"></div>
                 </div>
                 <div class="bg-white p-4 rounded-xl shadow-md">
                     <div id="toggle-target-stats" class="flex justify-between items-center cursor-pointer border-b pb-2 mb-3">
@@ -401,6 +406,8 @@
         const aiRunMultiButton = document.getElementById('ai-run-multi');
         const resultsContainer = document.getElementById('results-container');
         const resultsBody = document.getElementById('results-body');
+        const actionAnalysis = document.getElementById('action-analysis');
+        const analysisTurnSelect = document.getElementById('analysis-turn-select');
         const progressContainer = document.getElementById('multi-sim-progress-container');
         const progressBar = document.getElementById('multi-sim-progress-bar');
         const progressText = document.getElementById('multi-sim-progress-text');
@@ -1104,6 +1111,7 @@
                         const remainingCap = 100 - (appliedGains[boost.type] || 0);
                         const appliedBoost = Math.min(remainingCap, boost.amount);
                         gs.stats[boost.type] += appliedBoost;
+                        appliedGains[boost.type] = (appliedGains[boost.type] || 0) + appliedBoost;
                         if (!isSilent) logEvent(`${friendCard.name} provided a stat boost! +${appliedBoost} ${boost.type}.`, 'event');
                     }
                     if (Math.random() < 0.08) {
@@ -1127,7 +1135,15 @@
                     if (!isSilent) logEvent(`${card.name} provided wisdom recovery! Gained ${card.wisdom_recovery} energy.`, 'event');
                 }
             });
-            
+
+            if (gs.turnLog) {
+                const primaryStat = STAT_MAP[TRAINING_TYPES.indexOf(type)];
+                const primaryGain = appliedGains[primaryStat] || 0;
+                const totalGain = Object.values(appliedGains).reduce((acc, v) => acc + v, 0);
+                const secondaryGain = totalGain - primaryGain;
+                gs.turnLog.push({ day: gs.day, action: type, primaryGain, secondaryGain, friendCounts: gs.friendCountsThisTurn });
+            }
+
             if (!summer) {
                 facility.uses++;
                 if (facility.uses >= 5 && facility.level < 5) {
@@ -1159,6 +1175,9 @@
             }
             gs.energy = Math.min(100, gs.energy + energyGained);
             if (!isSilent) logEvent(message, 'rest');
+            if (gs.turnLog) {
+                gs.turnLog.push({ day: gs.day, action: 'Rest', primaryGain: 0, secondaryGain: 0, friendCounts: gs.friendCountsThisTurn });
+            }
             advanceDay(gs, isSilent);
         }
 
@@ -1183,6 +1202,9 @@
             else if (roll < 0.95) { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 20); message = 'Visited the shrine, feeling refreshed! Mood improved, gained 20 energy.'; } 
             else { gs.mood = Math.min(2, gs.mood + 1); gs.energy = Math.min(100, gs.energy + 30); message = 'A great blessing at the shrine! Mood improved, gained 30 energy.'; }
             if (!isSilent) logEvent(message, 'recreate');
+            if (gs.turnLog) {
+                gs.turnLog.push({ day: gs.day, action: 'Recreate', primaryGain: 0, secondaryGain: 0, friendCounts: gs.friendCountsThisTurn });
+            }
             advanceDay(gs, isSilent);
         }
 
@@ -1372,6 +1394,17 @@
                 applyInitialCardStats(gs);
             }
             if (gs.day > 65) return;
+
+            const allBondedNow = gs.supportCards.every(c => !c || c.type === 6 || c.friendship >= FRIENDSHIP_BOND_THRESHOLD);
+            if (!gs.bondsMaxed && allBondedNow) gs.bondsMaxed = true;
+            gs.friendCountsThisTurn = null;
+            if (gs.bondsMaxed) {
+                gs.friendCountsThisTurn = {};
+                TRAINING_TYPES.forEach(type => {
+                    gs.friendCountsThisTurn[type] = gs.supportCards.filter(c => c && c.type !== 6 && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD && type === TYPE_MAP[c.type]).length;
+                });
+            }
+
             if (gs.mood < 2 && !(gs.energy >= 100 && gs.mood > 0)) { handleRecreate(gs, isSilent); return; }
             if (gs.energy <= 40) { handleRest(gs, isSilent); return; }
 
@@ -1555,6 +1588,7 @@
 
         function runSilentSimulation(targetStats, bondWeights, delayForRainbows) {
             const localGS = init(true);
+            localGS.turnLog = [];
             applyInitialCardStats(localGS);
             placeSupportCards(localGS);
             placeReporter(localGS);
@@ -1563,13 +1597,16 @@
             }
             applyEndOfRunBonuses(localGS);
             localGS.stats.total = STAT_MAP.reduce((sum, stat) => sum + localGS.stats[stat], 0);
-            
+
             localGS.stats.metTargets = {};
             STAT_MAP.forEach(stat => {
                 localGS.stats.metTargets[stat] = localGS.stats[stat] >= targetStats.values[stat];
             });
-            
-            return localGS.stats;
+
+            return {
+                ...localGS.stats,
+                turnLog: localGS.turnLog
+            };
         }
 
         async function handleMultiSim() {
@@ -1672,6 +1709,61 @@
             </tr>`;
 
             resultsBody.innerHTML = tableHTML;
+
+            function renderActionAnalysis(results, startTurn) {
+                const actionTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0, Rest: 0, Recreate: 0 };
+                const primaryTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
+                const secondaryTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
+                const friendTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
+                let friendTurns = 0;
+
+                results.forEach(r => {
+                    r.turnLog.forEach(t => {
+                        if (t.day >= startTurn) {
+                            actionTotals[t.action] = (actionTotals[t.action] || 0) + 1;
+                            if (TRAINING_TYPES.includes(t.action)) {
+                                primaryTotals[t.action] += t.primaryGain || 0;
+                                secondaryTotals[t.action] += t.secondaryGain || 0;
+                            }
+                            if (t.friendCounts) {
+                                TRAINING_TYPES.forEach(type => {
+                                    friendTotals[type] += t.friendCounts[type];
+                                });
+                                friendTurns++;
+                            }
+                        }
+                    });
+                });
+
+                let actionRows = '';
+                TRAINING_TYPES.forEach(type => {
+                    const avgCount = actionTotals[type] / results.length;
+                    const avgPrimary = actionTotals[type] ? (primaryTotals[type] / actionTotals[type]) : 0;
+                    const avgSecondary = actionTotals[type] ? (secondaryTotals[type] / actionTotals[type]) : 0;
+                    const avgFriend = friendTurns ? (friendTotals[type] / friendTurns) : 0;
+                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${type}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgPrimary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgSecondary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgFriend.toFixed(2)}</td></tr>`;
+                });
+                ['Rest','Recreate'].forEach(act => {
+                    const avgCount = actionTotals[act] / results.length;
+                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${act}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td></tr>`;
+                });
+
+                actionAnalysis.innerHTML = `<h3 class=\"text-lg font-medium text-gray-900 mb-2\">Action Summary</h3><table class=\"min-w-full divide-y divide-gray-200\"><thead class=\"bg-gray-50\"><tr><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Action</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Count</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Primary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Secondary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Friend Trains/Turn</th></tr></thead><tbody class=\"bg-white divide-y divide-gray-200\">${actionRows}</tbody></table>`;
+            }
+
+            analysisTurnSelect.innerHTML = '';
+            for (let i = 1; i <= 65; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i;
+                analysisTurnSelect.appendChild(opt);
+            }
+            analysisTurnSelect.value = '1';
+            analysisTurnSelect.onchange = () => {
+                renderActionAnalysis(results, parseInt(analysisTurnSelect.value));
+            };
+            renderActionAnalysis(results, 1);
+
             resultsContainer.classList.remove('hidden');
             previousAnalysis = JSON.parse(JSON.stringify(analysis));
         }
