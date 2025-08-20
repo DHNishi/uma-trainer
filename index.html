@@ -128,6 +128,13 @@
                     </div>
                     <div id="support-cards-content" class="collapsible-content space-y-2">
                         <div id="support-card-slots"></div>
+                        <div class="mt-2 flex space-x-2">
+                            <input id="deck-name-input" type="text" placeholder="Deck name" class="flex-1 p-2 border rounded-lg text-sm">
+                            <button id="save-deck-btn" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Save Deck</button>
+                            <select id="saved-decks-select" class="flex-1 p-2 border rounded-lg text-sm">
+                                <option value="">Load Deck...</option>
+                            </select>
+                        </div>
                         <div class="mt-2">
                             <button id="deck-optimize-btn" class="w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Optimize Deck</button>
                         </div>
@@ -318,6 +325,8 @@
         const BOND_WEIGHTS_STORAGE_KEY = 'trainingSimBondWeights';
         const STARTING_STATS_STORAGE_KEY = 'trainingSimStartingStats';
         const SETTINGS_STORAGE_KEY = 'trainingSimSettings';
+        const SAVED_DECKS_STORAGE_KEY = 'trainingSimSavedDecks';
+        const ANALYSIS_CACHE_STORAGE_KEY = 'trainingSimAnalysisCache';
 
         const TARGET_PRESETS = {
             sprint: { speed: 1200, stamina: 520, power: 1200, guts: 210, wit: 400 },
@@ -383,6 +392,8 @@
         let goalSeekCache = {};
         let currentSettings = {};
         let initialStartingStats = {};
+        let savedDecks = JSON.parse(localStorage.getItem(SAVED_DECKS_STORAGE_KEY) || '{}');
+        let analysisCache = JSON.parse(localStorage.getItem(ANALYSIS_CACHE_STORAGE_KEY) || '{}');
 
         // --- DOM ELEMENTS ---
         const dayDisplay = document.getElementById('day-display');
@@ -392,6 +403,9 @@
         const trainingActionsContainer = document.getElementById('training-actions');
         const supportCardSlotsContainer = document.getElementById('support-card-slots');
         const deckOptimizeButton = document.getElementById('deck-optimize-btn');
+        const saveDeckButton = document.getElementById('save-deck-btn');
+        const savedDecksSelect = document.getElementById('saved-decks-select');
+        const deckNameInput = document.getElementById('deck-name-input');
         const targetStatsInputsContainer = document.getElementById('target-stats-inputs');
         const statsContainer = document.getElementById('stats-container');
         const aiNextDayButton = document.getElementById('ai-next-day');
@@ -487,6 +501,45 @@
                 // No saved data, apply default
                 applyTargetPreset('medium');
                 targetPresetSelect.value = 'medium';
+            }
+        }
+
+        function saveDeckListToLocalStorage() {
+            localStorage.setItem(SAVED_DECKS_STORAGE_KEY, JSON.stringify(savedDecks));
+        }
+
+        function populateSavedDecksSelect() {
+            savedDecksSelect.innerHTML = '<option value="">Load Deck...</option>';
+            Object.keys(savedDecks).forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                savedDecksSelect.appendChild(opt);
+            });
+        }
+
+        function saveCurrentDeck() {
+            const name = deckNameInput.value.trim();
+            if (!name) return;
+            savedDecks[name] = selectedCards.map(c => c ? { ...c } : null);
+            saveDeckListToLocalStorage();
+            populateSavedDecksSelect();
+            deckNameInput.value = '';
+        }
+
+        function loadSavedDeck(name) {
+            const deck = savedDecks[name];
+            if (!deck) return;
+            selectedCards = deck.map(c => c ? { ...c } : null);
+            goalSeekCache = {};
+            renderAllCardSlots();
+            saveDeckToLocalStorage();
+            const deckState = getDeckState();
+            if (analysisCache[deckState]) {
+                displayStatResults(analysisCache[deckState].results);
+                resultsContainer.classList.remove('hidden');
+            } else {
+                resultsContainer.classList.add('hidden');
             }
         }
 
@@ -729,6 +782,7 @@
 
         function setupCardSelector() {
             loadDeckFromLocalStorage();
+            populateSavedDecksSelect();
 
             if (!selectedCards[0]) {
                 const defaultCard = ALL_CARDS_DATA.find(card => 
@@ -903,6 +957,10 @@
             }).filter(Boolean);
         }
 
+        function getDeckState() {
+            return JSON.stringify(selectedCards.map(card => card ? { id: card.id, limit_break: card.limit_break } : null));
+        }
+
         function getDeckStateExcludingSlot(slotIndex) {
             return JSON.stringify(selectedCards.map((card, idx) => {
                 if (idx === slotIndex) return null;
@@ -916,6 +974,7 @@
                     delete goalSeekCache[slot];
                 }
             }
+            resultsContainer.classList.add('hidden');
         }
 
         function updateUI() {
@@ -1576,6 +1635,13 @@
 
         async function handleMultiSim() {
             if (isSimulating) return;
+            const deckState = getDeckState();
+            const cached = analysisCache[deckState];
+            if (cached) {
+                displayStatResults(cached.results);
+                resultsContainer.classList.remove('hidden');
+                return;
+            }
             disableAllButtons();
             isSimulating = true;
             resultsContainer.classList.add('hidden');
@@ -1594,6 +1660,8 @@
                 }
             }
             displayStatResults(allResults);
+            analysisCache[deckState] = { results: allResults };
+            localStorage.setItem(ANALYSIS_CACHE_STORAGE_KEY, JSON.stringify(analysisCache));
             progressContainer.classList.add('hidden');
             enableAllButtons();
             isSimulating = false;
@@ -2013,6 +2081,10 @@
         aiRunAllButton.addEventListener('click', runFullSimulation);
         aiRunMultiButton.addEventListener('click', handleMultiSim);
         deckOptimizeButton.addEventListener('click', handleDeckOptimization);
+        saveDeckButton.addEventListener('click', saveCurrentDeck);
+        savedDecksSelect.addEventListener('change', (e) => {
+            if (e.target.value) loadSavedDeck(e.target.value);
+        });
         goalSeekCloseButton.addEventListener('click', () => {
             goalSeekModal.classList.add('hidden');
             goalSeekModal.classList.remove('flex');
