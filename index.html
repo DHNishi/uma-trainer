@@ -1716,10 +1716,12 @@
                 const secondaryTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
                 const friendTotals = { Speed: 0, Stamina: 0, Power: 0, Guts: 0, Wit: 0 };
                 let friendTurns = 0;
+                let totalActions = 0;
 
                 results.forEach(r => {
                     r.turnLog.forEach(t => {
                         if (t.day >= startTurn) {
+                            totalActions++;
                             actionTotals[t.action] = (actionTotals[t.action] || 0) + 1;
                             if (TRAINING_TYPES.includes(t.action)) {
                                 primaryTotals[t.action] += t.primaryGain || 0;
@@ -1737,18 +1739,18 @@
 
                 let actionRows = '';
                 TRAINING_TYPES.forEach(type => {
-                    const avgCount = actionTotals[type] / results.length;
+                    const chance = totalActions ? (actionTotals[type] / totalActions * 100) : 0;
                     const avgPrimary = actionTotals[type] ? (primaryTotals[type] / actionTotals[type]) : 0;
                     const avgSecondary = actionTotals[type] ? (secondaryTotals[type] / actionTotals[type]) : 0;
                     const avgFriend = friendTurns ? (friendTotals[type] / friendTurns) : 0;
-                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${type}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgPrimary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgSecondary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgFriend.toFixed(2)}</td></tr>`;
+                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${type}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${chance.toFixed(2)}%</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgPrimary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgSecondary.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgFriend.toFixed(2)}</td></tr>`;
                 });
                 ['Rest','Recreate'].forEach(act => {
-                    const avgCount = actionTotals[act] / results.length;
-                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${act}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${avgCount.toFixed(2)}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td></tr>`;
+                    const chance = totalActions ? (actionTotals[act] / totalActions * 100) : 0;
+                    actionRows += `<tr><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${act}</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${chance.toFixed(2)}%</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td><td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">-</td></tr>`;
                 });
 
-                actionAnalysis.innerHTML = `<h3 class=\"text-lg font-medium text-gray-900 mb-2\">Action Summary</h3><table class=\"min-w-full divide-y divide-gray-200\"><thead class=\"bg-gray-50\"><tr><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Action</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Count</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Primary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Secondary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Friend Trains/Turn</th></tr></thead><tbody class=\"bg-white divide-y divide-gray-200\">${actionRows}</tbody></table>`;
+                actionAnalysis.innerHTML = `<h3 class=\"text-lg font-medium text-gray-900 mb-2\">Action Summary</h3><table class=\"min-w-full divide-y divide-gray-200\"><thead class=\"bg-gray-50\"><tr><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Action</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Chance %</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Primary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Avg Secondary Gain</th><th class=\"px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">Friend Trains/Turn</th></tr></thead><tbody class=\"bg-white divide-y divide-gray-200\">${actionRows}</tbody></table>`;
             }
 
             analysisTurnSelect.innerHTML = '';
