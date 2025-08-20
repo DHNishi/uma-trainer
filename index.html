@@ -1401,7 +1401,7 @@
             if (gs.bondsMaxed) {
                 gs.friendCountsThisTurn = {};
                 TRAINING_TYPES.forEach(type => {
-                    gs.friendCountsThisTurn[type] = gs.supportCards.filter(c => c && c.type !== 6 && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD).length;
+                    gs.friendCountsThisTurn[type] = gs.supportCards.filter(c => c && c.type !== 6 && c.location === type && c.friendship >= FRIENDSHIP_BOND_THRESHOLD && type === TYPE_MAP[c.type]).length;
                 });
             }
 
