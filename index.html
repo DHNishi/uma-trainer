@@ -839,8 +839,9 @@
                 const slot = e.target.closest('.card-slot-rendered');
                 if (slot) {
                     const index = parseInt(slot.closest('[data-index]').dataset.index);
-                    const card = getDeckFromUI()[index];
-                    if (card) {
+                    const cardInfo = selectedCards[index];
+                    if (cardInfo) {
+                        const card = ALL_CARDS_DATA.find(c => c.id === cardInfo.id && c.limit_break === cardInfo.limit_break) || cardInfo;
                         showTooltip(e, card);
                     }
                 }
