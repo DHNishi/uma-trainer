@@ -99,6 +99,7 @@
                     <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
                     <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
                 </div>
+                <button id="guts-calculator-button" class="text-gray-500 hover:text-gray-700">Guts Calc</button>
                 <button id="settings-button" class="text-gray-500 hover:text-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -318,10 +319,46 @@
                 <button id="settings-modal-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
             </div>
         </div>
+      </div>
+
+
+    <!-- Guts/Stamina Calculator Modal -->
+    <div id="guts-calculator-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-bg absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-sm w-full m-4">
+            <div class="p-4 border-b">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Guts/Stamina Calculator</h3>
+            </div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <label for="guts-calc-distance" class="block text-sm font-medium text-gray-700">Distance</label>
+                    <select id="guts-calc-distance" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                        <option value="1400">1400</option>
+                        <option value="1800">1800</option>
+                        <option value="2400" selected>2400</option>
+                        <option value="3000">3000</option>
+                        <option value="3600">3600</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="guts-calc-guts" class="block text-sm font-medium text-gray-700">Guts</label>
+                    <input type="number" id="guts-calc-guts" value="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+                <div>
+                    <label for="guts-calc-stamina" class="block text-sm font-medium text-gray-700">Stamina</label>
+                    <input type="number" id="guts-calc-stamina" value="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                </div>
+                <button id="guts-calc-calc-button" class="w-full rounded-md bg-blue-600 py-2 px-4 text-white hover:bg-blue-700">Calculate</button>
+                <div id="guts-calc-result" class="text-center text-lg font-medium"></div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 text-right">
+                <button id="guts-calc-close-button" type="button" class="inline-flex justify-center rounded-md border border-transparent bg-red-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-red-700">Close</button>
+            </div>
+        </div>
     </div>
 
 
-    <script>
+      <script>
     document.addEventListener('DOMContentLoaded', () => {
 
         // --- CONFIGURATION & CONSTANTS ---
@@ -2266,6 +2303,33 @@
             currentSettings.targetDistance = parseInt(e.target.value);
             saveSettingsToLocalStorage();
             invalidateGoalSeekCache();
+        });
+
+        const gutsCalculatorButton = document.getElementById('guts-calculator-button');
+        const gutsCalculatorModal = document.getElementById('guts-calculator-modal');
+        const gutsCalcCloseButton = document.getElementById('guts-calc-close-button');
+        const gutsCalcCalcButton = document.getElementById('guts-calc-calc-button');
+
+        gutsCalculatorButton.addEventListener('click', () => {
+            gutsCalculatorModal.classList.remove('hidden');
+            gutsCalculatorModal.classList.add('flex');
+        });
+        gutsCalcCloseButton.addEventListener('click', () => {
+            gutsCalculatorModal.classList.add('hidden');
+            gutsCalculatorModal.classList.remove('flex');
+        });
+        gutsCalcCalcButton.addEventListener('click', () => {
+            const distance = parseInt(document.getElementById('guts-calc-distance').value) || 0;
+            const guts = parseInt(document.getElementById('guts-calc-guts').value) || 0;
+            const stamina = parseInt(document.getElementById('guts-calc-stamina').value) || 0;
+            const baseline = GUTS_BASELINES[distance];
+            const resultElement = document.getElementById('guts-calc-result');
+            if (!baseline) {
+                resultElement.textContent = 'Unsupported distance';
+                return;
+            }
+            const equivalent = stamina + (gutsToStamina(distance, guts) - gutsToStamina(distance, baseline));
+            resultElement.textContent = `Equivalent Stamina: ${equivalent}`;
         });
 
         // --- START SIMULATION ---
