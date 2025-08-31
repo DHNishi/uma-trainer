@@ -1203,7 +1203,7 @@
 
             if (!summer) {
                 facility.uses++;
-                if (facility.uses >= 5 && facility.level < 5) {
+                if (facility.uses >= 4 && facility.level < 5) {
                     facility.uses = 0;
                     facility.level++;
                     if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
