@@ -304,11 +304,15 @@
                       <input type="checkbox" id="delay-for-rainbows-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                       <label for="delay-for-rainbows-toggle" class="text-sm font-medium text-gray-700">Delay for Rainbows</label>
                   </div>
-                  <div class="flex items-center space-x-2">
-                      <input type="checkbox" id="use-baseline-guts-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                      <label for="use-baseline-guts-toggle" class="text-sm font-medium text-gray-700">Use Baseline Guts for Initial Guts Valuation</label>
-                  </div>
-                  <div id="goal-seek-filter-settings">
+                   <div class="flex items-center space-x-2">
+                       <input type="checkbox" id="use-baseline-guts-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                       <label for="use-baseline-guts-toggle" class="text-sm font-medium text-gray-700">Use Baseline Guts for Initial Guts Valuation</label>
+                   </div>
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="facility-value-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <label for="facility-value-toggle" class="text-sm font-medium text-gray-700">Project Facility Upgrades</label>
+                    </div>
+                    <div id="goal-seek-filter-settings">
                       <h4 class="text-md font-medium text-gray-800 border-t pt-4">Goal Seek Filter</h4>
                       <div class="space-y-2 mt-2">
                           <!-- Checkboxes will be populated by JS -->
@@ -499,6 +503,7 @@
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
         const dynamicGutsToggle = document.getElementById('dynamic-guts-toggle');
         const useBaselineGutsToggle = document.getElementById('use-baseline-guts-toggle');
+        const facilityValueToggle = document.getElementById('facility-value-toggle');
         const targetDistanceSelect = document.getElementById('target-distance-select');
 
         // --- LOCAL STORAGE FUNCTIONS ---
@@ -624,6 +629,7 @@
                 },
                 dynamicGutsValuation: false,
                 useBaselineGuts: true,
+                facilityValueProjection: false,
                 targetDistance: 2400
             };
             currentSettings = { ...defaultSettings, ...savedSettings };
@@ -633,6 +639,7 @@
             delayForRainbowsToggle.checked = currentSettings.delayForRainbows;
             dynamicGutsToggle.checked = currentSettings.dynamicGutsValuation;
             useBaselineGutsToggle.checked = currentSettings.useBaselineGuts;
+            facilityValueToggle.checked = currentSettings.facilityValueProjection;
             targetDistanceSelect.value = currentSettings.targetDistance;
             targetDistanceSelect.disabled = !currentSettings.dynamicGutsValuation;
             useBaselineGutsToggle.disabled = !currentSettings.dynamicGutsValuation;
@@ -1446,6 +1453,39 @@
             return finalGains;
         }
 
+        function estimateFacilityFutureValue(gs, type, targetStats) {
+            const facility = gs.training[type];
+            if (facility.level >= 5) return 0;
+            const levels = TRAINING_DATA[type].levels;
+            const currentLevelIndex = facility.level - 1;
+            const nextLevelData = levels[currentLevelIndex + 1];
+            if (!nextLevelData) return 0;
+            const currentLevelData = levels[currentLevelIndex];
+            let diffScore = 0;
+            for (const stat in nextLevelData) {
+                const diff = (nextLevelData[stat] || 0) - (currentLevelData[stat] || 0);
+                diffScore += diff * (targetStats.priorities[stat] || 0);
+            }
+            if (diffScore <= 0) return 0;
+
+            const remainingTurns = Math.max(0, 65 - gs.day);
+            let facilityNeed = 0;
+            let totalNeed = 0;
+            TRAINING_TYPES.forEach(t => {
+                const lvlData = TRAINING_DATA[t].levels[gs.training[t].level - 1];
+                let typeNeed = 0;
+                for (const stat in lvlData) {
+                    const deficit = Math.max((targetStats.values[stat] || 0) - (gs.stats[stat] || 0), 0);
+                    typeNeed += deficit * (targetStats.priorities[stat] || 0);
+                }
+                if (t === type) facilityNeed = typeNeed;
+                totalNeed += typeNeed;
+            });
+            if (totalNeed === 0) return 0;
+            const expectedFutureUses = remainingTurns * (facilityNeed / totalNeed);
+            return (diffScore * expectedFutureUses) / 4;
+        }
+
         function runAITurn(gs, targetStats, bondWeights, delayForRainbows, isSilent = false) {
             if (gs.day === 1 && !gs.initialStatsApplied) {
                 applyInitialCardStats(gs);
@@ -1531,16 +1571,19 @@
                 const currentGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, gs.stats.guts + futureBonus) : 0;
                 const targetGutsOffset = currentSettings.dynamicGutsValuation ? gutsToStamina(distance, GUTS_BASELINES[distance]) : 0;
                 const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
-                const scoredTrainings = availableTrainings.map(t => {
-                    const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
-                    const potentialGains = calculatePotentialGains(gs, t.type, presentCards);
-                    if (currentSettings.dynamicGutsValuation) {
-                        const staminaFromGuts = gutsGainToStamina(distance, gs.stats.guts, potentialGains.guts || 0);
-                        potentialGains.stamina = (potentialGains.stamina || 0) + staminaFromGuts;
-                        delete potentialGains.guts;
-                    }
-                    let score = 0;
-                    for (const stat in potentialGains) {
+                    const scoredTrainings = availableTrainings.map(t => {
+                        const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                        const potentialGains = calculatePotentialGains(gs, t.type, presentCards);
+                        if (currentSettings.dynamicGutsValuation) {
+                            const staminaFromGuts = gutsGainToStamina(distance, gs.stats.guts, potentialGains.guts || 0);
+                            potentialGains.stamina = (potentialGains.stamina || 0) + staminaFromGuts;
+                            delete potentialGains.guts;
+                        }
+                        let score = 0;
+                        if (currentSettings.facilityValueProjection) {
+                            score += estimateFacilityFutureValue(gs, t.type, targetStats);
+                        }
+                        for (const stat in potentialGains) {
                         let currentStatValue = gs.stats[stat];
                         let targetStatValue = targetStats.values[stat];
                         const priority = targetStats.priorities[stat];
@@ -2283,6 +2326,12 @@
         delayForRainbowsToggle.addEventListener('change', (e) => {
             currentSettings.delayForRainbows = e.target.checked;
             saveSettingsToLocalStorage();
+        });
+
+        facilityValueToggle.addEventListener('change', (e) => {
+            currentSettings.facilityValueProjection = e.target.checked;
+            saveSettingsToLocalStorage();
+            invalidateGoalSeekCache();
         });
 
         dynamicGutsToggle.addEventListener('change', (e) => {
