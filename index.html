@@ -1701,7 +1701,10 @@
                     const effectiveGuts = Math.max(r.guts, baselineGuts);
                     const gutsOffset = gutsToStamina(distance, effectiveGuts);
                     r.effectiveStamina = Math.floor(r.stamina + gutsOffset);
-                    r.total = r.speed + r.power + r.wit + baselineGuts + r.effectiveStamina;
+                    // Ensure total reflects the sum of the displayed stats
+                    r.total = r.speed + r.stamina + r.power + r.guts + r.wit;
+                    // Baseline total for comparison
+                    r.baselineTotal = r.speed + r.power + r.wit + baselineGuts + r.effectiveStamina;
                 });
             } else {
                 const baselineGutsStam = gutsToStamina(distance, 400);
@@ -1711,7 +1714,9 @@
                 });
             }
 
-            const statsToAnalyze = [...STAT_MAP, 'effectiveStamina', 'total'];
+            const statsToAnalyze = currentSettings.dynamicGutsValuation
+                ? [...STAT_MAP, 'effectiveStamina', 'total', 'baselineTotal']
+                : [...STAT_MAP, 'effectiveStamina', 'total'];
             statsToAnalyze.forEach(stat => {
                 const values = results.map(r => r[stat]).sort((a, b) => a - b);
                 const sum = values.reduce((acc, v) => acc + v, 0);
@@ -1756,12 +1761,13 @@
             }).join('');
 
             const totalStat = analysis['total'];
+            const baselineTotalStat = analysis['baselineTotal'];
             tableHTML += `<tr class="bg-gray-50">
                 <td class="px-4 py-2 whitespace-nowrap text-sm font-bold text-gray-900">Total</td>
-                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.min}${formatDelta(totalStat.min, previousAnalysis?.total?.min)}</td>
-                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.mean}${formatDelta(totalStat.mean, previousAnalysis?.total?.mean)}</td>
-                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.std}${formatDelta(totalStat.std, previousAnalysis?.total?.std)}</td>
-                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.max}${formatDelta(totalStat.max, previousAnalysis?.total?.max)}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.min}${currentSettings.dynamicGutsValuation ? ` (${baselineTotalStat.min})` : ''}${formatDelta(totalStat.min, previousAnalysis?.total?.min)}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.mean}${currentSettings.dynamicGutsValuation ? ` (${baselineTotalStat.mean})` : ''}${formatDelta(totalStat.mean, previousAnalysis?.total?.mean)}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.std}${currentSettings.dynamicGutsValuation ? ` (${baselineTotalStat.std})` : ''}${formatDelta(totalStat.std, previousAnalysis?.total?.std)}</td>
+                <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${totalStat.max}${currentSettings.dynamicGutsValuation ? ` (${baselineTotalStat.max})` : ''}${formatDelta(totalStat.max, previousAnalysis?.total?.max)}</td>
                 <td class="px-4 py-2"></td>
             </tr>`;
 
