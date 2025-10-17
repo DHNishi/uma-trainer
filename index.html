@@ -419,6 +419,11 @@
         };
         
         const FRIENDSHIP_BOND_THRESHOLD = 80;
+        const FRIEND_BOND_BOOSTS = {
+            'Tazuna Hayakawa': { type: 'speed', amount: 3 },
+            'Aoi Kiryuin': { type: 'wit', amount: 3 },
+            'Riko Kashimoto': { type: 'stamina', amount: 3 }
+        };
 
         const GUTS_BASELINES = { 1400: 210, 1800: 260, 2400: 320, 3000: 380, 3600: 440 };
         const GUTS_SCALES = { 1400: 429, 1800: 512, 2400: 641, 3000: 761, 3600: 877 };
@@ -711,7 +716,6 @@
                     energy_discount: card.energy_discount || 0,
                     energy_up: card.energy_up || 0,
                     stat_boost: card.stat_boost || null,
-                    training_bonus: null,
                     final_bond_bonus: null,
                     trainedWith: false,
                     recreationBuffs: card.type === 6 ? 3 : 0,
@@ -721,10 +725,11 @@
 
                 if (newCard.type === 6) {
                     newCard.final_bond_bonus = { speed: 6, stamina: 6, power: 6, guts: 6, wit: 6 };
+                    newCard.stat_boost = newCard.stat_boost || FRIEND_BOND_BOOSTS[newCard.name] || null;
                 }
 
                 if (card.char_name === 'Riko Kashimoto') {
-                    newCard.training_bonus = { stat: 'stamina', amount: 3 };
+                    newCard.stat_boost = FRIEND_BOND_BOOSTS[newCard.name];
                     newCard.final_bond_bonus = { stamina: 18, guts: 18 };
                 }
                 return newCard;
@@ -1203,7 +1208,7 @@
                     if (!isSilent) logEvent(`First training with ${friendCard.name} improved your mood!`, 'event');
                 } else {
                     if (Math.random() < 0.40) {
-                        const boost = friendCard.stat_boost || {type: friendCard.name === "Aoi Kiryuin" ? 'wit' : 'speed', amount: 3};
+                        const boost = friendCard.stat_boost || FRIEND_BOND_BOOSTS[friendCard.name] || { type: 'speed', amount: 3 };
                         const remainingCap = 100 - (appliedGains[boost.type] || 0);
                         const appliedBoost = Math.min(remainingCap, boost.amount);
                         gs.stats[boost.type] += appliedBoost;
@@ -1499,15 +1504,6 @@
                 finalGains[primaryStat] = Math.min(100, (finalGains[primaryStat] || 0) + 3);
             }
 
-            presentCards
-                .filter(card => card.type === 6 && card.training_bonus)
-                .forEach(card => {
-                    const { stat, amount } = card.training_bonus;
-                    if (!stat || !amount) return;
-                    const currentGain = finalGains[stat] || 0;
-                    if (currentGain >= 100) return;
-                    finalGains[stat] = Math.min(100, currentGain + amount);
-                });
             return finalGains;
         }
 
