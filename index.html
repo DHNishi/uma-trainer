@@ -300,6 +300,20 @@
                     <label for="mood-down-chance" class="block text-sm font-medium text-gray-700">Mood Down Chance (%)</label>
                     <input type="number" id="mood-down-chance" value="2.5" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
                 </div>
+                <div>
+                    <label for="friend-priority-weight" class="block text-sm font-medium text-gray-700">Friend Training Weight</label>
+                    <select id="friend-priority-weight" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
+                        <option value="0.25">0.25x</option>
+                        <option value="0.5">0.50x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1" selected>1.00x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.50x</option>
+                        <option value="1.75">1.75x</option>
+                        <option value="2">2.00x</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Adjust the importance of trainings that include a Friend support card.</p>
+                </div>
                   <div class="flex items-center space-x-2">
                       <input type="checkbox" id="delay-for-rainbows-toggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                       <label for="delay-for-rainbows-toggle" class="text-sm font-medium text-gray-700">Delay for Rainbows</label>
@@ -495,6 +509,7 @@
         const settingsModal = document.getElementById('settings-modal');
         const settingsModalCloseButton = document.getElementById('settings-modal-close-button');
         const moodDownChanceInput = document.getElementById('mood-down-chance');
+        const friendPrioritySelect = document.getElementById('friend-priority-weight');
         const delayForRainbowsToggle = document.getElementById('delay-for-rainbows-toggle');
         const goalSeekFilterSettings = document.getElementById('goal-seek-filter-settings');
         const dynamicGutsToggle = document.getElementById('dynamic-guts-toggle');
@@ -616,6 +631,7 @@
             }
             const defaultSettings = {
                 moodDownChance: 2.5,
+                friendPriorityWeight: 1,
                 delayForRainbows: false,
                 goalSeekLBs: {
                     SSR: [0, 2, 4],
@@ -630,6 +646,16 @@
 
             // Update UI elements
             moodDownChanceInput.value = currentSettings.moodDownChance;
+            if (friendPrioritySelect) {
+                const value = String(currentSettings.friendPriorityWeight);
+                if (![...friendPrioritySelect.options].some(option => option.value === value)) {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = `${parseFloat(value).toFixed(2)}x`;
+                    friendPrioritySelect.appendChild(option);
+                }
+                friendPrioritySelect.value = value;
+            }
             delayForRainbowsToggle.checked = currentSettings.delayForRainbows;
             dynamicGutsToggle.checked = currentSettings.dynamicGutsValuation;
             useBaselineGutsToggle.checked = currentSettings.useBaselineGuts;
@@ -1542,6 +1568,9 @@
             if (needsBonding) {
                 const scoredTrainings = availableTrainings.map(t => {
                     const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                    const rawFriendWeight = parseFloat(currentSettings.friendPriorityWeight);
+                    const friendWeightSetting = Number.isFinite(rawFriendWeight) ? rawFriendWeight : 1;
+                    const friendWeight = presentCards.some(card => card.type === 6) ? friendWeightSetting : 1;
                     let bondGain = 0;
                     presentCards.forEach(card => {
                         const cardIndex = gs.supportCards.findIndex(sc => sc.id === card.id && sc.limit_break === card.limit_break);
@@ -1555,7 +1584,7 @@
                         }
                     });
                     const priority = TRAINING_PRIORITY.indexOf(t.type);
-                    return { ...t, bondGain, priority };
+                    return { ...t, bondGain: bondGain * friendWeight, priority };
                 });
                 scoredTrainings.sort((a, b) => {
                     if (a.bondGain !== b.bondGain) return b.bondGain - a.bondGain;
@@ -1572,6 +1601,9 @@
                 const targetEffectiveStamina = targetStats.values.stamina + targetGutsOffset;
                 const scoredTrainings = availableTrainings.map(t => {
                     const presentCards = gs.supportCards.filter(c => c && c.location === t.type);
+                    const rawFriendWeight = parseFloat(currentSettings.friendPriorityWeight);
+                    const friendWeightSetting = Number.isFinite(rawFriendWeight) ? rawFriendWeight : 1;
+                    const friendWeight = presentCards.some(card => card.type === 6) ? friendWeightSetting : 1;
                     const potentialGains = calculatePotentialGains(gs, t.type, presentCards);
                     if (currentSettings.dynamicGutsValuation) {
                         const staminaFromGuts = gutsGainToStamina(distance, gs.stats.guts, potentialGains.guts || 0);
@@ -1599,7 +1631,7 @@
                             score += usefulGain * priority;
                         }
                     }
-                    return { ...t, score };
+                    return { ...t, score: score * friendWeight };
                 });
                 scoredTrainings.sort((a, b) => b.score - a.score);
                 if (scoredTrainings.length > 0 && scoredTrainings[0].score > 0) { bestAction = scoredTrainings[0].type; }
@@ -2329,6 +2361,13 @@
             currentSettings.moodDownChance = parseFloat(e.target.value) || 0;
             saveSettingsToLocalStorage();
         });
+        if (friendPrioritySelect) {
+            friendPrioritySelect.addEventListener('change', (e) => {
+                const value = parseFloat(e.target.value);
+                currentSettings.friendPriorityWeight = Number.isFinite(value) ? value : 1;
+                saveSettingsToLocalStorage();
+            });
+        }
         delayForRainbowsToggle.addEventListener('change', (e) => {
             currentSettings.delayForRainbows = e.target.checked;
             saveSettingsToLocalStorage();
