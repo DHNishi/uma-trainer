@@ -99,6 +99,11 @@
                     <div><div class="text-sm font-medium text-gray-500">Energy</div><div id="energy-display" class="text-2xl font-bold text-green-600">100</div></div>
                     <div><div class="text-sm font-medium text-gray-500">Mood</div><div id="mood-display" class="text-2xl font-bold">Normal</div></div>
                 </div>
+                <div class="flex items-center space-x-2">
+                    <span id="mode-indicator" class="px-3 py-1 text-sm font-semibold rounded-full border bg-gray-50 text-gray-700">URA Mode</span>
+                    <button id="unity-mode-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-lg">Enable Unity Cup</button>
+                    <button id="ura-mode-button" class="hidden bg-slate-600 hover:bg-slate-700 text-white font-semibold px-3 py-2 rounded-lg">Back to URA</button>
+                </div>
                 <button id="guts-calculator-button" class="text-gray-500 hover:text-gray-700">Guts Calc</button>
                 <button id="settings-button" class="text-gray-500 hover:text-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -402,13 +407,55 @@
             long: 3600
         };
 
-        const TRAINING_DATA = {
+        const URA_TRAINING_DATA = {
             Speed:   { base_cost: 21, levels: [{ speed: 10, power: 5 }, { speed: 11, power: 5 }, { speed: 12, power: 5 }, { speed: 13, power: 6 }, { speed: 14, power: 7 }] },
             Stamina: { base_cost: 19, levels: [{ stamina: 9, guts: 4 }, { stamina: 10, guts: 4 }, { stamina: 11, guts: 4 }, { stamina: 12, guts: 5 }, { stamina: 13, guts: 6 }] },
             Power:   { base_cost: 20, levels: [{ power: 8, stamina: 5 }, { power: 9, stamina: 5 }, { power: 10, stamina: 5 }, { power: 11, stamina: 6 }, { power: 12, stamina: 7 }] },
             Guts:    { base_cost: 22, levels: [{ guts: 8, speed: 4, power: 4 }, { guts: 9, speed: 4, power: 4 }, { guts: 10, speed: 4, power: 4 }, { guts: 11, speed: 5, power: 4 }, { guts: 12, speed: 5, power: 5 }] },
             Wit:     { base_cost: -5, levels: [{ wit: 9, speed: 2 }, { wit: 10, speed: 2 }, { wit: 11, speed: 2 }, { wit: 12, speed: 3 }, { wit: 13, speed: 4 }] }
         };
+
+        const UNITY_CUP_TRAINING_DATA = {
+            Speed:   { base_cost: 19, levels: [
+                { speed: 8, power: 4 },
+                { speed: 9, power: 4 },
+                { speed: 10, power: 4 },
+                { speed: 11, power: 5 },
+                { speed: 12, power: 6 }
+            ] },
+            Stamina: { base_cost: 17, levels: [
+                { stamina: 7, guts: 3 },
+                { stamina: 8, guts: 3 },
+                { stamina: 9, guts: 3 },
+                { stamina: 10, guts: 4 },
+                { stamina: 11, guts: 5 }
+            ] },
+            Power:   { base_cost: 18, levels: [
+                { power: 6, stamina: 4 },
+                { power: 7, stamina: 4 },
+                { power: 8, stamina: 4 },
+                { power: 9, stamina: 5 },
+                { power: 10, stamina: 6 }
+            ] },
+            Guts:    { base_cost: 20, levels: [
+                { guts: 6, speed: 3, power: 3 },
+                { guts: 7, speed: 3, power: 3 },
+                { guts: 8, speed: 3, power: 3 },
+                { guts: 9, speed: 4, power: 3 },
+                { guts: 10, speed: 4, power: 4 }
+            ] },
+            Wit:     { base_cost: -5, levels: [
+                { wit: 6, speed: 2 },
+                { wit: 7, speed: 2 },
+                { wit: 8, speed: 2 },
+                { wit: 9, speed: 3 },
+                { wit: 10, speed: 4 }
+            ] }
+        };
+
+        function getTrainingData() {
+            return currentSettings?.mode === 'UnityCup' ? UNITY_CUP_TRAINING_DATA : URA_TRAINING_DATA;
+        }
 
         const MOODS = {
             '-2': { name: 'Awful', multiplier: -0.20, color: 'text-red-600' },
@@ -459,10 +506,13 @@
         let initialStartingStats = {};
 
         // --- DOM ELEMENTS ---
-        const dayDisplay = document.getElementById('day-display');
-        const energyDisplay = document.getElementById('energy-display');
-        const moodDisplay = document.getElementById('mood-display');
-        const logDisplay = document.getElementById('log-display');
+          const dayDisplay = document.getElementById('day-display');
+          const energyDisplay = document.getElementById('energy-display');
+          const moodDisplay = document.getElementById('mood-display');
+          const modeIndicator = document.getElementById('mode-indicator');
+          const unityModeButton = document.getElementById('unity-mode-button');
+          const uraModeButton = document.getElementById('ura-mode-button');
+          const logDisplay = document.getElementById('log-display');
         const trainingActionsContainer = document.getElementById('training-actions');
         const supportCardSlotsContainer = document.getElementById('support-card-slots');
         const deckOptimizeButton = document.getElementById('deck-optimize-btn');
@@ -484,10 +534,39 @@
         const actionAnalysis = document.getElementById('action-analysis');
         const analysisTurnSelect = document.getElementById('analysis-turn-select');
         const progressContainer = document.getElementById('multi-sim-progress-container');
-        const progressBar = document.getElementById('multi-sim-progress-bar');
-        const progressText = document.getElementById('multi-sim-progress-text');
+          const progressBar = document.getElementById('multi-sim-progress-bar');
+          const progressText = document.getElementById('multi-sim-progress-text');
 
-        let previousAnalysis = null;
+          let previousAnalysis = null;
+
+          function isUnityCupMode() {
+              return currentSettings.mode === 'UnityCup';
+          }
+
+          function updateModeUI() {
+              const isUnity = isUnityCupMode();
+              if (modeIndicator) {
+                  modeIndicator.textContent = isUnity ? 'Unity Cup Mode' : 'URA Mode';
+                  modeIndicator.className = `px-3 py-1 text-sm font-semibold rounded-full border ${isUnity ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`;
+              }
+              if (unityModeButton && uraModeButton) {
+                  if (isUnity) {
+                      unityModeButton.classList.add('hidden');
+                      uraModeButton.classList.remove('hidden');
+                  } else {
+                      unityModeButton.classList.remove('hidden');
+                      uraModeButton.classList.add('hidden');
+                  }
+              }
+          }
+
+          function setMode(mode) {
+              if (currentSettings.mode === mode) return;
+              currentSettings.mode = mode;
+              saveSettingsToLocalStorage();
+              init();
+              updateModeUI();
+          }
 
         function formatDelta(current, previous, decimals = 0) {
             if (previous === undefined) return '';
@@ -645,7 +724,8 @@
                 },
                 dynamicGutsValuation: false,
                 useBaselineGuts: true,
-                targetDistance: 2400
+                targetDistance: 2400,
+                mode: 'URA'
             };
             currentSettings = { ...defaultSettings, ...savedSettings };
 
@@ -670,6 +750,7 @@
             const gutsPrioritySelect = document.getElementById('priority-guts');
             if (gutsPrioritySelect) gutsPrioritySelect.disabled = currentSettings.dynamicGutsValuation;
             updateGoalSeekFilterUI();
+            updateModeUI();
         }
 
 
@@ -677,7 +758,8 @@
         function init(isSilent = false, bonusOverrides = null) {
             isSimulating = false;
             previousStats = null;
-            
+            updateModeUI();
+
             if (!isSilent) {
                 for (const stat in initialStartingStats) {
                     const input = document.getElementById(`stat-${stat}`);
@@ -1061,7 +1143,7 @@
         }
 
         function calculateTrainingCost(type, level) {
-            const data = TRAINING_DATA[type];
+            const data = getTrainingData()[type];
             if (!data || type === 'Wit') return data.base_cost;
             let cost = data.base_cost + (level - 1);
             if (level >= 4) cost += 1;
@@ -1245,7 +1327,7 @@
                 gs.turnLog.push({ day: gs.day, action: type, primaryGain, secondaryGain, friendCounts: gs.friendCountsThisTurn });
             }
 
-            if (!summer) {
+            if (!summer && !isUnityCupMode()) {
                 facility.uses++;
                 if (facility.uses >= 4 && facility.level < 5) {
                     facility.uses = 0;
@@ -1318,7 +1400,17 @@
                 previousStats = { ...gs.stats };
             }
             gs.day++;
-            
+
+            if (isUnityCupMode() && gs.day !== 1 && (gs.day - 1) % 12 === 0) {
+                TRAINING_TYPES.forEach(type => {
+                    const facility = gs.training[type];
+                    if (facility.level < 5) {
+                        facility.level++;
+                        if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
+                    }
+                });
+            }
+
             STAT_MAP.forEach(stat => {
                 gs.stats[stat] = Math.min(gs.stats[stat], 1200);
             });
@@ -1473,7 +1565,7 @@
             const facility = gs.training[type];
             const summer = isSummer(gs.day);
             const effectiveLevel = summer ? 5 : facility.level;
-            const baseGains = { ...TRAINING_DATA[type].levels[effectiveLevel - 1] };
+            const baseGains = { ...getTrainingData()[type].levels[effectiveLevel - 1] };
             const moodData = MOODS[gs.mood];
             const totalMoodBonus = presentCards.reduce((prod, card) => prod * card.mb, 1);
             const moodMultiplier = 1 + (moodData.multiplier * totalMoodBonus);
@@ -2353,6 +2445,8 @@
             settingsModal.classList.add('hidden');
             settingsModal.classList.remove('flex');
         });
+        unityModeButton.addEventListener('click', () => setMode('UnityCup'));
+        uraModeButton.addEventListener('click', () => setMode('URA'));
         moodDownChanceInput.addEventListener('input', (e) => {
             currentSettings.moodDownChance = parseFloat(e.target.value) || 0;
             saveSettingsToLocalStorage();
