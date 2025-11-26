@@ -772,7 +772,13 @@
             let localGameState = {
                 day: 1, energy: 100, mood: 0,
                 stats: getStartingStatsFromUI(),
-                training: { Speed: { level: 1, uses: 0 }, Stamina: { level: 1, uses: 0 }, Power: { level: 1, uses: 0 }, Guts: { level: 1, uses: 0 }, Wit: { level: 1, uses: 0 } },
+                training: {
+                    Speed: { level: 1, uses: 0, unityUses: 0, unityLevelUpUsed: false },
+                    Stamina: { level: 1, uses: 0, unityUses: 0, unityLevelUpUsed: false },
+                    Power: { level: 1, uses: 0, unityUses: 0, unityLevelUpUsed: false },
+                    Guts: { level: 1, uses: 0, unityUses: 0, unityLevelUpUsed: false },
+                    Wit: { level: 1, uses: 0, unityUses: 0, unityLevelUpUsed: false }
+                },
                 supportCards: [], primaryStat: 'Speed', log: [],
                 reporter: { bond: 0, location: null },
                 characterBonuses: bonusOverrides || getStatBonusesFromUI(),
@@ -1327,12 +1333,23 @@
                 gs.turnLog.push({ day: gs.day, action: type, primaryGain, secondaryGain, friendCounts: gs.friendCountsThisTurn });
             }
 
-            if (!summer && !isUnityCupMode()) {
-                facility.uses++;
-                if (facility.uses >= 4 && facility.level < 5) {
-                    facility.uses = 0;
-                    facility.level++;
-                    if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
+            if (!summer) {
+                if (!isUnityCupMode()) {
+                    facility.uses++;
+                    if (facility.uses >= 4 && facility.level < 5) {
+                        facility.uses = 0;
+                        facility.level++;
+                        if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
+                    }
+                } else {
+                    facility.unityUses = facility.unityUses || 0;
+                    facility.unityLevelUpUsed = facility.unityLevelUpUsed || false;
+                    facility.unityUses++;
+                    if (!facility.unityLevelUpUsed && facility.unityUses >= 10 && facility.level < 5) {
+                        facility.unityLevelUpUsed = true;
+                        facility.level++;
+                        if (!isSilent) logEvent(`${type} facility leveled up to Level ${facility.level}!`, 'system');
+                    }
                 }
             }
 
