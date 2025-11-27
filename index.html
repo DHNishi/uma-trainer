@@ -1497,19 +1497,33 @@
             }
         }
         
-        function applyEndOfRunBonuses(gs) {
+        function calculateRaceBonusPerStat(gs) {
             const totalRaceBonusPercent = gs.supportCards.reduce((sum, card) => sum + (card ? card.race_bonus : 0), 0) / 100;
-            const smallRacePoints = 9 * Math.floor(3 * (1 + totalRaceBonusPercent));
-            const largeRacePoints = 3 * Math.floor(10 * (1 + totalRaceBonusPercent));
-            const raceBonusPerStat = smallRacePoints + largeRacePoints;
+            const baseRaces = isUnityCupMode()
+                ? [
+                    ...Array(9).fill(3),
+                    ...Array(3).fill(10),
+                    1, 2, 4, 5, 7
+                ]
+                : [
+                    ...Array(9).fill(3),
+                    ...Array(3).fill(10)
+                ];
+
+            return baseRaces.reduce((total, base) => total + Math.floor(base * (1 + totalRaceBonusPercent)), 0);
+        }
+
+        function applyEndOfRunBonuses(gs) {
+            const raceBonusPerStat = calculateRaceBonusPerStat(gs);
+            const directorBonus = isUnityCupMode() ? 10 : 15;
 
             if (raceBonusPerStat > 0) {
                 STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + raceBonusPerStat, 1200));
                 if (!gs.isSilent) logEvent(`Race Bonus! Gained ${raceBonusPerStat} to all stats.`, 'event');
             }
 
-            STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 15, 1200));
-            if (!gs.isSilent) logEvent(`Director Bonus! Gained 15 to all stats.`, 'event');
+            STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + directorBonus, 1200));
+            if (!gs.isSilent) logEvent(`Director Bonus! Gained ${directorBonus} to all stats.`, 'event');
 
             STAT_MAP.forEach(stat => gs.stats[stat] = Math.min(gs.stats[stat] + 5, 1200));
             if (!gs.isSilent) logEvent(`Character Ending Bonus! Gained 5 to all stats.`, 'event');
@@ -1556,11 +1570,8 @@
         }
 
         function calculateUpcomingBonuses(gs) {
-            const totalRaceBonusPercent = gs.supportCards.reduce((sum, card) => sum + (card ? card.race_bonus : 0), 0) / 100;
-            const smallRacePoints = 9 * Math.floor(3 * (1 + totalRaceBonusPercent));
-            const largeRacePoints = 3 * Math.floor(10 * (1 + totalRaceBonusPercent));
-            const raceBonusPerStat = smallRacePoints + largeRacePoints;
-            const directorBonus = 15;
+            const raceBonusPerStat = calculateRaceBonusPerStat(gs);
+            const directorBonus = isUnityCupMode() ? 10 : 15;
             let reporterBonus = 0;
             if (gs.reporter) {
                 if (gs.reporter.bond >= 100) {
