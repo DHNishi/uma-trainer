@@ -644,9 +644,33 @@
                 targetPresetSelect.value = matchedPreset;
 
             } else {
-                // No saved data, apply default
-                applyTargetPreset('medium');
-                targetPresetSelect.value = 'medium';
+                // No saved data, apply default targets
+                const defaultTargets = {
+                    values: {
+                        speed: 1200,
+                        stamina: 1200,
+                        power: 1200,
+                        guts: 1200,
+                        wit: 1200
+                    },
+                    priorities: {
+                        speed: 1,
+                        stamina: 1,
+                        power: 1,
+                        guts: 0.5,
+                        wit: 1.5
+                    }
+                };
+
+                STAT_MAP.forEach(stat => {
+                    const input = document.getElementById(`target-${stat}`);
+                    if (input) input.value = defaultTargets.values[stat];
+
+                    const select = document.getElementById(`priority-${stat}`);
+                    if (select) select.value = defaultTargets.priorities[stat];
+                });
+                targetPresetSelect.value = 'custom';
+                saveTargetsToLocalStorage();
             }
         }
 
@@ -855,9 +879,9 @@
                     <span>Stat</span><span>Value</span><span>Priority</span>
                 </div>
             ` + STAT_MAP.map(stat => {
-                let selected_1 = stat === 'power' || stat === 'guts' ? 'selected' : '';
-                let selected_2 = stat === 'speed' || stat === 'stamina' ? 'selected' : '';
-                let selected_05 = stat === 'wit' ? 'selected' : '';
+                let selected_1 = stat === 'speed' || stat === 'stamina' || stat === 'power' ? 'selected' : '';
+                let selected_05 = stat === 'guts' ? 'selected' : '';
+                let selected_15 = stat === 'wit' ? 'selected' : '';
 
                 return `
                 <div class="grid grid-cols-3 gap-2 items-center">
@@ -869,8 +893,8 @@
                         <option value="0.5" ${selected_05}>0.5</option>
                         <option value="0.75">0.75</option>
                         <option value="1" ${selected_1}>1</option>
-                        <option value="1.5">1.5</option>
-                        <option value="2" ${selected_2}>2</option>
+                        <option value="1.5" ${selected_15}>1.5</option>
+                        <option value="2">2</option>
                         <option value="3">3</option>
                     </select>
                 </div>`;
